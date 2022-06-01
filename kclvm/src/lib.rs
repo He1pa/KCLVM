@@ -186,9 +186,9 @@ pub fn kclvm_cli_run_unsafe(args: *const i8, plugin_agent: *const i8) -> Result<
                     }
                 }
             };
-            if Path::new(&ll_path).exists() {
-                std::fs::remove_file(&ll_path).unwrap();
-            }
+            // if Path::new(&ll_path).exists() {
+            //     std::fs::remove_file(&ll_path).unwrap();
+            // }
             ll_path_lock.unlock().unwrap();
             tx.send(dylib_path)
                 .expect("channel will be there waiting for the pool");

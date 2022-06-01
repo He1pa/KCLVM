@@ -209,20 +209,22 @@ impl Command {
         }
 
         let mut args: Vec<String> = vec![
-            "-undefined".to_string(),
-            "dynamic_lookup".to_string(),
             // format!("-Wl,-rpath,{}/lib", self.executable_root),
             format!("-L{}/lib", self.executable_root),
+            "-L/usr/lib".to_string(),
             "-lkclvm_native_shared".to_string(),
+            "-lSystem".to_string(),
             // format!("-I{}/include", self.executable_root),
             "-arch".to_string(),
             "x86_64".to_string(),
+            "-sdk_version".to_string(),
+            "10.15.0".to_string(),
+            "-dylib".to_string(),
+            "-rpath".to_string(),
+            format!("{}/lib",self.executable_root.clone()),
         ];
         let mut bc_files = dylibs.to_owned();
-        for bc_file in &bc_files {
-            args.push(bc_file.replace(".dylib", ".o"));
-        }
-        // args.append(&mut bc_files);
+        args.append(&mut bc_files);
         let mut more_args = vec![
             self.rust_libstd_dylib.clone(),
             "-o".to_string(),
@@ -278,14 +280,18 @@ impl Command {
         }
 
         let mut args: Vec<String> = vec![
-            "-undefined".to_string(),
-            "dynamic_lookup".to_string(),
+
             // format!("-Wl,-rpath,{}/lib", self.executable_root),
             format!("-L{}/lib", self.executable_root),
             "-lkclvm_native_shared".to_string(),
-            // format!("-I{}/include", self.executable_root),
+            "-lSystem".to_string(),
             "-arch".to_string(),
             "x86_64".to_string(),
+            "-sdk_version".to_string(),
+            "10.15.0".to_string(),
+            "-dylib".to_string(),
+            "-rpath".to_string(),
+            format!("{}/lib",self.executable_root.clone()),
         ];
         for bc_file in &bc_files {
             args.push(bc_file.replace(".ll", ".o"));
@@ -328,14 +334,19 @@ impl Command {
         }
 
         let mut args: Vec<String> = vec![
-            "-undefined".to_string(),
-            "dynamic_lookup".to_string(),
+
             // format!("-Wl,-rpath,{}/lib", self.executable_root),
             format!("-L{}/lib", self.executable_root),
             "-lkclvm_native_shared".to_string(),
+            "-lSystem".to_string(),
             // format!("-I{}/include", self.executable_root),
             "-arch".to_string(),
             "x86_64".to_string(),
+            "-sdk_version".to_string(),
+            "10.15.0".to_string(),
+            "-dylib".to_string(),
+            "-rpath".to_string(),
+            format!("{}/lib",self.executable_root.clone()),
         ];
         let mut bc_files = vec![bc_path];
         for bc_file in &bc_files {
