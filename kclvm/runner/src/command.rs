@@ -219,7 +219,10 @@ impl Command {
             "x86_64".to_string(),
         ];
         let mut bc_files = dylibs.to_owned();
-        args.append(&mut bc_files);
+        for bc_file in &bc_files {
+            args.push(bc_file.replace(".dylib", ".o"));
+        }
+        // args.append(&mut bc_files);
         let mut more_args = vec![
             self.rust_libstd_dylib.clone(),
             "-o".to_string(),
@@ -284,7 +287,10 @@ impl Command {
             "-arch".to_string(),
             "x86_64".to_string(),
         ];
-        args.append(&mut bc_files);
+        for bc_file in &bc_files {
+            args.push(bc_file.replace(".ll", ".o"));
+        }
+        // args.append(&mut bc_files);
         let mut more_args = vec![
             self.rust_libstd_dylib.clone(),
             "-o".to_string(),
@@ -332,7 +338,10 @@ impl Command {
             "x86_64".to_string(),
         ];
         let mut bc_files = vec![bc_path];
-        args.append(&mut bc_files);
+        for bc_file in &bc_files {
+            args.push(bc_file.replace(".ll", ".o"));
+        }
+        // args.append(&mut bc_files);
         let mut more_args = vec![
             self.rust_libstd_dylib.clone(),
             "-o".to_string(),

@@ -5,15 +5,18 @@ use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
+use inkwell::targets::{RelocMode, CodeModel, TargetTriple, FileType, Target};
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType};
 use inkwell::values::{
     BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue, PointerValue,
 };
-use inkwell::{AddressSpace, IntPredicate};
+use inkwell::{AddressSpace, IntPredicate, OptimizationLevel};
 use phf::{phf_map, Map};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
+use std::fs::File;
+use std::io::Write;
 use std::rc::Rc;
 use std::str;
 
@@ -1235,16 +1238,34 @@ impl<'ctx> LLVMCodeGenContext<'ctx> {
             if opt.no_link {
                 let modules = self.modules.borrow_mut();
                 for (index, (_, module)) in modules.iter().enumerate() {
-                    let path = if modules.len() == 1 {
+                    let path_str = if modules.len() == 1 {
                         format!("{}.ll", path_str)
                     } else {
                         format!("{}_{}.ll", path_str, index)
                     };
-                    let path = std::path::Path::new(&path);
+                    let path = std::path::Path::new(&path_str);
                     module
-                        .borrow_mut()
+                        .borrow()
                         .print_to_file(path)
                         .expect(kcl_error::CODE_GEN_ERROR_MSG);
+
+                    Target::initialize_x86(&Default::default());
+                    let opt = OptimizationLevel::Default;
+                    let reloc = RelocMode::Default;
+                    let model = CodeModel::Default;
+                    let target = Target::from_name("x86-64").unwrap();
+                    let target_machine = target.create_target_machine(
+                        &self.llvm_target_triple(),
+                        "x86-64",
+                        "+avx2",
+                        opt,
+                        reloc,
+                        model
+                    )
+                    .unwrap();
+                    let module = module.borrow();
+                    let path = path_str.replace(".ll", ".o");
+                    target_machine.write_to_file(&module, FileType::Object, &std::path::Path::new(&path)).unwrap();
                 }
             } else {
                 self.module
@@ -1253,6 +1274,16 @@ impl<'ctx> LLVMCodeGenContext<'ctx> {
             }
         }
         Ok(())
+    }
+
+    /// LLVM Target triple
+    fn llvm_target_triple(&self) -> TargetTriple {
+        TargetTriple::create("x86_64-apple-macosx")
+    }
+
+    /// LLVM Target triple
+    fn llvm_features(&self) -> &'static str {
+        ""
     }
 }
 
