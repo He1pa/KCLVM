@@ -23,37 +23,72 @@ pub struct KclvmAssembler {
     thread_count: usize,
 }
 impl KclvmAssembler {
+    /// Constructs an KclvmAssembler instance with a default value 4
+    /// for the number of threads in multi-file compilation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kclvm_runner::assembler::KclvmAssembler;
+    ///
+    /// let kclvm_assem = KclvmAssembler::new();
+    /// ```
     pub fn new() -> Self {
         Self { thread_count: 4 }
     }
 
+    /// Constructs an KclvmAssembler instance with a value
+    /// for the number of threads in multi-file compilation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use kclvm_runner::assembler::KclvmAssembler;
+    ///
+    /// let kclvm_assem = KclvmAssembler::new_with_thread_count(5);
+    /// ```
     pub fn new_with_thread_count(thread_count: usize) -> Self {
         if thread_count <= 0 {
-            bug!("Illegal Thread Count");
+            bug!("Illegal thread count in multi-file compilation");
         }
         Self { thread_count }
     }
 
-    /// Generate the dylibs and return file paths.
+    /// Clean up the path of the dylibs.
+    /// It will remove the file in "file_path" and all the files in file_path end with "*.ll".
     ///
-    /// In the method, multiple threads will be created to concurrently generate dylibs
-    /// under different package paths.
+    /// # Examples
     ///
-    /// This method will generate “.out” and ".ll" files, and return the file paths of
-    /// the generated files in Vec<String>.
-    pub fn gen_dylibs(
-        &self,
-        program: ast::Program,
-        scope: ProgramScope,
-        plugin_agent: u64,
-        entry_file: &String,
-    ) -> Vec<String> {
-        // gen bc or ll_file
-        let path = std::path::Path::new(LL_FILE);
+    /// ```
+    /// use std::fs;
+    /// use std::fs::File;
+    /// use kclvm_runner::assembler::KclvmAssembler;
+    /// std::fs::create_dir_all("./src/test_datas/test_clean").unwrap();
+    /// let test_path = "./src/test_datas/test_clean/test.out";
+    /// File::create(test_path);
+    /// let path = std::path::Path::new(test_path);
+    /// assert_eq!(path.exists(), true);
+    /// KclvmAssembler::new().clean_path_for_genlibs(test_path);
+    /// assert_eq!(path.exists(), false);
+    ///
+    /// let ll_test1 = &format!("{}{}", test_path, ".test1.ll");
+    /// let ll_test2 = &format!("{}{}", test_path, ".test2.ll");
+    /// File::create(ll_test1);
+    /// File::create(ll_test2);
+    /// let path1 = std::path::Path::new(ll_test1);
+    /// let path2 = std::path::Path::new(ll_test2);
+    /// assert_eq!(path1.exists(), true);
+    /// assert_eq!(path2.exists(), true);
+    /// KclvmAssembler::new().clean_path_for_genlibs(test_path);
+    /// assert_eq!(path1.exists(), false);
+    /// assert_eq!(path2.exists(), false);
+    /// ```
+    pub fn clean_path_for_genlibs(&self, file_path: &str) {
+        let path = std::path::Path::new(file_path);
         if path.exists() {
             std::fs::remove_file(path).unwrap();
         }
-        for entry in glob::glob(&format!("{}*.ll", LL_FILE)).unwrap() {
+        for entry in glob::glob(&format!("{}*.ll", file_path)).unwrap() {
             match entry {
                 Ok(path) => {
                     if path.exists() {
@@ -63,14 +98,92 @@ impl KclvmAssembler {
                 Err(e) => println!("{:?}", e),
             };
         }
+    }
 
-        let cache_dir = Path::new(&program.root)
+    /// Generate cache dir from ast.Program.root.
+    /// Create cache dir if it doesn't exist.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::fs;
+    /// use kclvm_runner::assembler::KclvmAssembler;
+    ///
+    /// let expected_dir = "test_prog_name/.kclvm/cache/0.4.2-e07ed7af0d9bd1e86a3131714e4bd20c";
+    /// let path = std::path::Path::new(expected_dir);
+    /// assert_eq!(path.exists(), false);
+    ///
+    /// let cache_dir = KclvmAssembler::new().load_cache_dir("test_prog_name");
+    /// assert_eq!(cache_dir.display().to_string(), expected_dir);
+    ///
+    /// let path = std::path::Path::new(expected_dir);
+    /// assert_eq!(path.exists(), true);
+    ///
+    /// fs::remove_dir(expected_dir);
+    /// assert_eq!(path.exists(), false);
+    /// ```
+    pub fn load_cache_dir(&self, prog_root_name: &str) -> PathBuf {
+        let cache_dir = Path::new(prog_root_name)
             .join(".kclvm")
             .join("cache")
             .join(kclvm_version::get_full_version());
         if !cache_dir.exists() {
             std::fs::create_dir_all(&cache_dir).unwrap();
         }
+        cache_dir
+    }
+
+    /// Generate the dylibs by llvm IR and return file paths.
+    ///
+    /// In the method, multiple threads will be created to concurrently generate dylibs
+    /// under different package paths.
+    ///
+    /// This method will generate “.dylib” and ".ll" files, and return the file paths of
+    /// the generated files in Vec<String>.
+    ///
+    /// # Examples
+    /// TODO:  Due to the env problem of ubuntu, it cannot run normally, so comment it temporarily. @zong-zhe
+    /// 
+    /// use std::fs;
+    /// use kclvm_parser::load_program;
+    /// use kclvm_runner::runner::ExecProgramArgs;
+    /// use kclvm_runner::assembler::KclvmAssembler;
+    /// use kclvm_sema::resolver::resolve_program;
+    ///
+    /// let plugin_agent = 0;
+    ///
+    /// let args = ExecProgramArgs::default();
+    /// let opts = args.get_load_program_options();
+    ///
+    /// let kcl_path = "./src/test_datas/init_check_order_0/main.k";
+    /// let mut prog = load_program(&[kcl_path], Some(opts)).unwrap();
+    /// let scope = resolve_program(&mut prog);
+    ///        
+    /// let dylib_paths = KclvmAssembler::new().gen_ll_dylibs(prog, scope, plugin_agent, &("test_entry_file_name".to_string()));
+    /// assert_eq!(dylib_paths.len(), 1);
+    ///
+    /// let expected_dylib_path = fs::canonicalize("./test_entry_file_name.dylib").unwrap().display().to_string();
+    /// assert_eq!(*dylib_paths.get(0).unwrap(), expected_dylib_path);
+    ///
+    /// let path = std::path::Path::new(&expected_dylib_path);
+    /// assert_eq!(path.exists(), true);
+    /// KclvmAssembler::new().clean_path_for_genlibs(&expected_dylib_path);
+    /// assert_eq!(path.exists(), false);
+    ///
+    /// let path = std::path::Path::new("test_entry_file_name.ll.lock");
+    /// assert_eq!(path.exists(), true);
+    /// KclvmAssembler::new().clean_path_for_genlibs("test_entry_file_name.ll.lock");
+    /// assert_eq!(path.exists(), false);
+    /// 
+    pub fn gen_ll_dylibs(
+        &self,
+        program: ast::Program,
+        scope: ProgramScope,
+        plugin_agent: u64,
+        entry_file: &String,
+    ) -> Vec<String> {
+        self.clean_path_for_genlibs(LL_FILE);
+        let cache_dir = self.load_cache_dir(&program.root);
         let mut compile_progs: IndexMap<
             String,
             (
@@ -112,7 +225,7 @@ impl KclvmAssembler {
                 // written.
                 let dylib_path = if is_main_pkg {
                     let file = PathBuf::from(&temp_entry_file);
-                    lock_ll_file_and_gen_dylib(&compile_prog, import_names, &file, &plugin_agent)
+                    lock_file_and_gen_dylib(&compile_prog, import_names, &file, &plugin_agent)
                 } else {
                     let file = cache_dir.join(&pkgpath);
                     // Read the dylib cache
@@ -127,7 +240,7 @@ impl KclvmAssembler {
                             }
                         }
                         None => {
-                            let dylib_path = lock_ll_file_and_gen_dylib(
+                            let dylib_path = lock_file_and_gen_dylib(
                                 &compile_prog,
                                 import_names,
                                 &file,
@@ -152,7 +265,15 @@ impl KclvmAssembler {
     }
 }
 
-fn lock_ll_file_and_gen_dylib(
+/// Locking file and dylib generation.
+/// Atomic operation in the parallel multi-file compilation.
+///
+/// In this method, the file where the code is generated will be locked at first,
+/// and then the method "emit_code" in kclvm-compiler will be called to write the code
+/// to the file.
+///
+/// At last the file will be unlocked and the intermediate temp file will be deleted.
+fn lock_file_and_gen_dylib(
     compile_prog: &Program,
     import_names: IndexMap<String, IndexMap<String, String>>,
     file: &PathBuf,
@@ -165,11 +286,11 @@ fn lock_ll_file_and_gen_dylib(
     let ll_path = format!("{}.ll", ll_file);
     let dylib_path = format!("{}{}", ll_file, Command::get_lib_suffix());
 
-    // Locking "*.ll" file for parallel code generation
+    // locking "*.ll" file for parallel code generation.
     let mut ll_path_lock = fslock::LockFile::open(&format!("{}.lock", ll_path)).unwrap();
     ll_path_lock.lock().unwrap();
 
-    // Clean "*.ll" file path
+    // clean "*.ll" file path
     clean_ll_path(&ll_path);
 
     // gen code
@@ -188,7 +309,7 @@ fn lock_ll_file_and_gen_dylib(
     let mut cmd = Command::new(*plugin_agent);
     let gen_dylib_path = cmd.run_clang_single(&ll_path, &dylib_path);
 
-    // Clean "*.ll" file path
+    // clean "*.ll" file path
     clean_ll_path(&ll_path);
 
     // unlock "*.ll" file
@@ -197,7 +318,7 @@ fn lock_ll_file_and_gen_dylib(
     return gen_dylib_path;
 }
 
-// Clean "*.ll" file path
+// clean "*.ll" file path
 fn clean_ll_path(ll_path: &String) {
     if Path::new(ll_path).exists() {
         std::fs::remove_file(&ll_path).unwrap();

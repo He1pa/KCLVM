@@ -37,7 +37,8 @@ pub mod tests;
 ///
 /// # Examples
 ///
-/// ```
+/// 
+/// // TODO:  Due to the env problem of ubuntu, it cannot run normally, so comment it temporarily. @zong-zhe
 /// use kclvm_runner::{execute, runner::ExecProgramArgs};
 /// use kclvm_parser::load_program;
 /// use kclvm_ast::ast::Program;
@@ -58,8 +59,7 @@ pub mod tests;
 ///    // result is the kcl in json format.
 ///    let result = execute(prog, plugin_agent, &args).unwrap();
 /// }
-/// ```
-///
+/// 
 pub fn execute(
     mut program: Program,
     plugin_agent: u64,
@@ -71,8 +71,12 @@ pub fn execute(
 
     // generate dylibs
     let temp_entry_file = temp_file();
-    let dylib_paths =
-        assembler::KclvmAssembler::new().gen_dylibs(program, scope, plugin_agent, &temp_entry_file);
+    let dylib_paths = assembler::KclvmAssembler::new().gen_ll_dylibs(
+        program,
+        scope,
+        plugin_agent,
+        &temp_entry_file,
+    );
 
     // link dylibsKclvmRunner
     let dylib_suffix = Command::get_lib_suffix();
