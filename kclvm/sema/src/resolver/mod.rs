@@ -18,7 +18,7 @@ mod var;
 #[cfg(test)]
 mod tests;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use std::{cell::RefCell, rc::Rc};
 
 use crate::pre_process::pre_process_program;

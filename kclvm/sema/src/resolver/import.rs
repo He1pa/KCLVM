@@ -5,13 +5,15 @@ use crate::{
     builtin::system_module::STANDARD_SYSTEM_MODULES,
     ty::{Type, TypeKind},
 };
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use kclvm_ast::ast;
 use kclvm_error::*;
+use regex::Regex;
 use std::{cell::RefCell, path::Path, rc::Rc};
 
 use super::scope::{Scope, ScopeKind, ScopeObject, ScopeObjectKind};
 use crate::resolver::pos::GetPos;
+use kclvm_ast::walker::MutSelfWalker;
 
 impl<'ctx> Resolver<'ctx> {
     /// Check import error
@@ -39,7 +41,7 @@ impl<'ctx> Resolver<'ctx> {
                                     pos: Position {
                                         filename: m.filename.clone(),
                                         line: stmt.line,
-                                        column: Some(1),
+                                        column: None,
                                     },
                                     style: Style::Line,
                                     message: format!(
@@ -59,7 +61,7 @@ impl<'ctx> Resolver<'ctx> {
                                         pos: Position {
                                             filename: self.ctx.filename.clone(),
                                             line: stmt.line,
-                                            column: Some(1),
+                                            column: None,
                                         },
                                         style: Style::Line,
                                         message: format!(
@@ -83,6 +85,7 @@ impl<'ctx> Resolver<'ctx> {
         let filename = self.ctx.filename.clone();
         self.change_package_context(pkgpath, &filename);
         self.init_import_list();
+        self.check_unused_import(pkgpath);
     }
 
     /// Init import list and store the module scope object into the scope map.
@@ -98,10 +101,29 @@ impl<'ctx> Resolver<'ctx> {
                             {
                                 match self.ctx.import_names.get_mut(&self.ctx.filename) {
                                     Some(mapping) => {
-                                        mapping.insert(
-                                            import_stmt.name.to_string(),
-                                            import_stmt.path.to_string(),
-                                        );
+                                        if mapping.contains_key(&import_stmt.name.to_string()) {
+                                            self.handler.add_warning(
+                                                WarningKind::ReimportWarning,
+                                                &[Message {
+                                                    pos: Position {
+                                                        filename: module.filename.clone(),
+                                                        line: stmt.line,
+                                                        column: None,
+                                                    },
+                                                    style: Style::Line,
+                                                    message: format!(
+                                                        "Module '{}' is reimported multiple times.",
+                                                        &import_stmt.name
+                                                    ),
+                                                    note: None,
+                                                }],
+                                            );
+                                        } else {
+                                            mapping.insert(
+                                                import_stmt.name.to_string(),
+                                                import_stmt.path.to_string(),
+                                            );
+                                        }
                                     }
                                     None => {
                                         let mut mapping = IndexMap::default();
@@ -210,5 +232,82 @@ impl<'ctx> Resolver<'ctx> {
         self.ctx.pkgpath = pkgpath.to_string();
         self.ctx.filename = filename.to_string();
         self.scope = self.scope_map.get(pkgpath).unwrap().clone();
+    }
+
+    pub(crate) fn check_unused_import(&mut self, pkgpath: &str) {
+        if let Some(modules) = self.program.pkgs.get(pkgpath){
+            for module in modules{
+                if let Some(import_names) = self.ctx.import_names.get(&module.filename) {
+                    let mut walker = UnusedImportCheckWalker {
+                        used_import: IndexSet::default(),
+                        import_names: import_names.clone(),
+                    };
+                    // Traverse the module AST and record used import_stmt.
+                    walker.walk_module(&module);
+
+                    // We have record all used import_stmt for this module in 'used_import' now.
+                    // If an import is not used at all, we signal a warning.
+                    for stmt in &module.body {
+                        if let ast::Stmt::Import(import_stmt) = &stmt.node {
+                            if !walker.used_import.contains(&import_stmt.name) {
+                                self.handler.add_warning(
+                                    WarningKind::UnusedImportWarning,
+                                    &[Message {
+                                        pos: Position {
+                                            filename: module.filename.clone(),
+                                            line: stmt.line,
+                                            column: None,
+                                        },
+                                        style: Style::Line,
+                                        message: format!(
+                                            "Module '{}' imported but unused.",
+                                            import_stmt.name
+                                        ),
+                                        note: None,
+                                    }],
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct UnusedImportCheckWalker {
+    pub import_names: IndexMap<String, String>,
+    pub used_import: IndexSet<String>,
+}
+
+impl UnusedImportCheckWalker {
+    /// Record used import_stmt in each module into 'used_import'.
+    /// Check 'identifier' and 'schema_attr' when traversing the AST.
+    pub(crate) fn record_use(&mut self, name: &String) {
+        let re = Regex::new(r"[|:\[\]\{\}]").unwrap();
+        // # SchemaAttr.types, A|B, [A|B], {A|B:C}
+        let types: Vec<&str> = re.split(name).collect();
+        for t in types {
+            let t = t.to_string();
+            // name: a.b.c
+            let name: Vec<&str> = t.split(".").collect();
+            let firstname = name[0];
+            if self.import_names.contains_key(firstname) {
+                self.used_import.insert(firstname.to_string());
+            }
+        }
+    }
+}
+
+impl<'ctx> MutSelfWalker<'ctx> for UnusedImportCheckWalker {
+    fn walk_identifier(&mut self, identifier: &'ctx ast::Identifier) {
+        if identifier.names.len() >= 2 {
+            let id_firstname = &identifier.names[0];
+            self.record_use(&id_firstname);
+        }
+    }
+
+    fn walk_schema_attr(&mut self, schema_attr: &'ctx ast::SchemaAttr) {
+        self.record_use(&schema_attr.type_str.node);
     }
 }
