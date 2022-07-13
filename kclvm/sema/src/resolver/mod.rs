@@ -14,6 +14,7 @@ pub mod scope;
 mod ty;
 mod ty_alias;
 mod var;
+mod lint;
 
 #[cfg(test)]
 mod tests;
@@ -133,6 +134,7 @@ pub fn resolve_program(program: &mut Program) -> ProgramScope {
     );
     resolver.resolve_import();
     let scope = resolver.check(kclvm_ast::MAIN_PKG);
+    resolver.lint_check();
     let type_alias_mapping = resolver.ctx.type_alias_mapping.clone();
     process_program_type_alias(program, type_alias_mapping);
     scope
