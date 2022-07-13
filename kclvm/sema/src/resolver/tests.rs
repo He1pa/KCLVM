@@ -1,11 +1,16 @@
 use crate::builtin::BUILTIN_FUNCTION_NAMES;
+use crate::pre_process::pre_process_program;
 use crate::resolver::resolve_program;
+use crate::resolver::lint;
 use crate::resolver::scope::*;
 use crate::ty::Type;
+use indexmap::IndexSet;
 use kclvm_ast::ast;
 use kclvm_error::*;
 use kclvm_parser::{load_program, parse_program};
 use std::rc::Rc;
+use super::Options;
+use super::Resolver;
 
 #[test]
 fn test_scope() {
@@ -78,4 +83,95 @@ fn test_resolve_program_fail() {
     assert_eq!(diag.code, Some(DiagnosticId::Error(ErrorKind::TypeError)));
     assert_eq!(diag.messages.len(), 1);
     assert_eq!(diag.messages[0].message, "expect int, got {str:int(1)}");
+}
+
+#[test]
+fn test_import_check() {
+    let mut program = load_program(&["./src/resolver/test_data/import.k"], None).unwrap();
+    pre_process_program(&mut program);
+    let mut resolver = Resolver::new(
+        &program,
+        Options {
+            raise_err: true,
+            config_auto_fix: false,
+        },
+    );
+    resolver.resolve_import();
+    resolver.check(kclvm_ast::MAIN_PKG);
+    let root = &program.root.clone();
+    let filename = root.clone() + "/import.k";
+
+    let mut diagnostics: IndexSet<Diagnostic> = IndexSet::default();
+    diagnostics.insert(Diagnostic {
+        level: Level::Error,
+        messages: vec![Message {
+            pos: Position {
+                filename: filename.clone(),
+                line: 1,
+                column: None,
+            },
+            style: Style::Line,
+            message: format!(
+                "Cannot find the module {} from {}",
+                "abc",
+                root.clone() + "/abc"
+            ),
+            note: None,
+        }],
+        code: Some(DiagnosticId::Error(ErrorKind::CannotFindModule)),
+    });
+    diagnostics.insert(Diagnostic {
+        level: Level::Warning,
+        messages: vec![Message {
+            pos: Position {
+                filename: filename.clone(),
+                line: 3,
+                column: None,
+            },
+            style: Style::Line,
+            message: format!(
+                "Module '{}' is reimported multiple times.",
+                "a",
+            ),
+            note: None,
+        }],
+        code: Some(DiagnosticId::Warning(WarningKind::ReimportWarning)),
+    });
+    diagnostics.insert(Diagnostic {
+        level: Level::Warning,
+        messages: vec![Message {
+            pos: Position {
+                filename: filename.clone(),
+                line: 1,
+                column: None,
+            },
+            style: Style::Line,
+            message: format!(
+                "Module '{}' imported but unused.",
+                "abc",
+            ),
+            note: None,
+        }],
+        code: Some(DiagnosticId::Warning(WarningKind::UnusedImportWarning)),
+    });
+    assert_eq!(diagnostics, resolver.handler.diagnostics);
+    resolver.handler.emit();
+}
+
+
+#[test]
+fn test_lint() {
+    let mut program = load_program(&["./src/resolver/test_data/import.k"], None).unwrap();
+    pre_process_program(&mut program);
+    let mut resolver = Resolver::new(
+        &program,
+        Options {
+            raise_err: true,
+            config_auto_fix: false,
+        },
+    );
+    resolver.resolve_import();
+    resolver.check(kclvm_ast::MAIN_PKG);
+    resolver.lint_check(kclvm_ast::MAIN_PKG);
+    resolver.handler.emit();
 }

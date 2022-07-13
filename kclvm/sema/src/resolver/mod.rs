@@ -19,7 +19,7 @@ mod lint;
 #[cfg(test)]
 mod tests;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use std::{cell::RefCell, rc::Rc};
 
 use crate::pre_process::pre_process_program;
@@ -32,6 +32,7 @@ use kclvm_error::*;
 
 use crate::ty::TypeContext;
 
+use self::lint::{Linter, ImportPosition};
 use self::scope::{builtin_scope, ProgramScope};
 
 /// Resolver is responsible for program semantic checking, mainly
@@ -134,7 +135,7 @@ pub fn resolve_program(program: &mut Program) -> ProgramScope {
     );
     resolver.resolve_import();
     let scope = resolver.check(kclvm_ast::MAIN_PKG);
-    resolver.lint_check();
+    // resolver.lint_check();
     let type_alias_mapping = resolver.ctx.type_alias_mapping.clone();
     process_program_type_alias(program, type_alias_mapping);
     scope
