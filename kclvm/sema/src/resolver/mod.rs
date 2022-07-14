@@ -73,6 +73,7 @@ impl<'ctx> Resolver<'ctx> {
                     for stmt in &module.body {
                         self.walk_stmt(&stmt.node);
                     }
+                    self.lint_check_module(&module)
                 }
             }
             None => {}
@@ -100,6 +101,8 @@ pub struct Context {
     pub local_vars: Vec<String>,
     /// Import pkgpath and name
     pub import_names: IndexMap<String, IndexMap<String, String>>,
+    /// Used import nams
+    pub used_import_names: IndexMap<String, IndexSet<String>>,
     /// Are we resolving the left value.
     pub l_value: bool,
     /// Are we resolving the statement start position.
@@ -135,7 +138,6 @@ pub fn resolve_program(program: &mut Program) -> ProgramScope {
     );
     resolver.resolve_import();
     let scope = resolver.check(kclvm_ast::MAIN_PKG);
-    // resolver.lint_check();
     let type_alias_mapping = resolver.ctx.type_alias_mapping.clone();
     process_program_type_alias(program, type_alias_mapping);
     scope

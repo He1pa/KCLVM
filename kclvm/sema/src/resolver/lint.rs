@@ -1,7 +1,8 @@
-use indexmap::IndexSet;
+use indexmap::{IndexSet, IndexMap};
 use kclvm_error::{Diagnostic, DiagnosticId, Level, ErrorKind, WarningKind, Message, Position, Style};
 use kclvm_ast::ast;
-use super::Resolver;
+use regex::Regex;
+use super::{Resolver, Context};
 use kclvm_ast::walker::MutSelfWalker;
 
 // 定义lint检查的步骤:
@@ -32,7 +33,8 @@ macro_rules! lint_array {
 macro_rules! lint_methods {
     ($macro:path, $args:tt) => (
         $macro!($args, [
-            fn check_module(module: &ast::Module, diags: &mut IndexSet<Diagnostic>);
+            fn check_module(module: &ast::Module, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context);
+            fn check_module_post(module: &ast::Module, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context);
             /*
             * Stmt
             */
@@ -55,7 +57,7 @@ macro_rules! lint_methods {
 
             // fn check_expr(expr: ast::Node<ast::Expr>);
             // fn check_quant_expr(quant_expr: ast::QuantExpr);
-            // fn check_schema_attr(schema_attr: ast::SchemaAttr);
+            fn check_schema_attr(id: &ast::SchemaAttr, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context);
             // fn check_if_expr(if_expr: ast::IfExpr);
             // fn check_unary_expr(unary_expr: ast::UnaryExpr);
             // fn check_binary_expr(binary_expr: ast::BinaryExpr);
@@ -78,7 +80,7 @@ macro_rules! lint_methods {
             // fn check_keyword(keyword: ast::Keyword);
             // fn check_arguments(arguments: ast::Arguments);
             // fn check_compare(compare: ast::Compare);
-            // fn check_identifier(identifier: ast::Identifier);
+            fn check_identifier(id: &ast::Identifier, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context);
             // fn check_number_lit(number_lit: ast::NumberLit);
             // fn check_string_lit(string_lit: ast::StringLit);
             // fn check_name_constant_lit(name_constant_lit: ast::NameConstantLit);
@@ -103,6 +105,9 @@ pub struct Lint {
     
     // Error/Warning code
     pub code: &'static str,
+
+    // Error/Warning code
+    pub note: Option<&'static str>,
 }
 
 
@@ -260,62 +265,8 @@ macro_rules! declare_combined_default_pass {
 //         self.LintPassB.check_stmt(a, diags);
 //         ...
 //     }
-/// }
+// }
 default_lint_passes!(declare_combined_default_pass, [CombinedLintPass]);
-
-
-// 具体的lint 和lintpass 定义，
-
-// importposition check
-pub static Import_Position: &Lint = &Lint {
-    name: stringify!("ImportPosition"),
-    level: Level::Warning,
-    desc: "Importstmt should be at the top of file",
-    code: "W401",
-};
-
-declare_lint_pass!(ImportPosition => [Import_Position]);
-
-impl DefaultLintPassImpl for ImportPosition{
-    fn check_module(&mut self, module: &ast::Module, diags: &mut IndexSet<Diagnostic>) {
-        let mut first_non_importstmt = 2000;
-        for stmt in &module.body{
-            match &stmt.node{
-                ast::Stmt::Import(_ImportStmt) => {}
-                _ => {
-                    if stmt.line < first_non_importstmt {
-                        first_non_importstmt = stmt.line
-                    }
-                }
-            }
-        }
-        for stmt in &module.body{
-            if let ast::Stmt::Import(_import_stmt) = &stmt.node {
-                if stmt.line > first_non_importstmt {
-                    diags.insert(
-                        Diagnostic{
-                            level: Level::Warning,
-                            messages: (&[Message {
-                                pos: Position {
-                                    filename: module.filename.clone(),
-                                    line: stmt.line,
-                                    column: None,
-                                },
-                                style: Style::Line,
-                                message: format!(
-                                    "Importstmt should be at the top of file",
-                                ),
-                                note: None,
-                            }]).to_vec(),
-                            code: Some(DiagnosticId::Warning(WarningKind::ImportstmtPositionWarning))
-                        }
-                    );
-                }
-            }
-        }
-        
-    }
-}
 
 
 
@@ -323,14 +274,16 @@ impl DefaultLintPassImpl for ImportPosition{
 
 pub struct Linter<'l, T: LintPass>{
     pass: T,
-    diags: &'l mut IndexSet<Diagnostic>
+    diags: &'l mut IndexSet<Diagnostic>,
+    ctx: &'l mut Context
 }
 
 impl<'l> Linter<'l, CombinedLintPass> {
-    pub fn new(diags: &'l mut IndexSet<Diagnostic>) -> Self{
+    pub fn new(diags: &'l mut IndexSet<Diagnostic>, ctx: &'l mut Context) -> Self{
         Linter::<'l, CombinedLintPass> {
             pass: CombinedLintPass::new(),
-            diags
+            diags,
+            ctx
         }
 
     }
@@ -345,25 +298,150 @@ macro_rules! walk_list {
     };
 }
 
-
-
 impl<'ctx> MutSelfWalker<'ctx> for Linter<'_, CombinedLintPass>{
     fn walk_module(&mut self, module: &'ctx ast::Module){
-        self.pass.check_module(module, &mut self.diags);
+        self.pass.check_module(module, &mut self.diags, &mut self.ctx);
         walk_list!(self, walk_stmt, module.body)
     }
 }
 
 impl<'ctx> Resolver<'ctx> {
-    pub fn lint_check(&mut self, pkgpath: &str){
-        let mut linter = Linter::<CombinedLintPass>::new(&mut self.handler.diagnostics);
-        match self.program.pkgs.get(pkgpath) {
-            Some(modules) => {
-                for module in modules {
-                    linter.walk_module(module);
+    pub fn lint_check_module(&mut self, module: &ast::Module){
+        let mut linter = Linter::<CombinedLintPass>::new(
+            &mut self.handler.diagnostics,
+            &mut self.ctx
+        );
+        linter.walk_module(module)
+    }
+}
+
+// lint 定义 和 lintpass 的实现，
+
+// importposition check
+pub static Import_Position: &Lint = &Lint {
+    name: stringify!("Import_Position"),
+    level: Level::Warning,
+    desc: "Check for importstmt that are not defined at the top of file",
+    code: "W0413",
+    note: Some("Consider moving tihs statement to the top of the file")
+};
+
+declare_lint_pass!(ImportPosition => [Import_Position]);
+
+impl DefaultLintPassImpl for ImportPosition{
+    fn check_module(&mut self, module: &ast::Module, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context) {
+        let mut first_non_importstmt = std::u64::MAX;
+        for stmt in &module.body{
+            match &stmt.node{
+                ast::Stmt::Import(_import_stmt) => {}
+                _ => {
+                    if stmt.line < first_non_importstmt {
+                        first_non_importstmt = stmt.line
+                    }
                 }
             }
-            None => {}
         }
+        for stmt in &module.body{
+            if let ast::Stmt::Import(_import_stmt) = &stmt.node {
+                if stmt.line > first_non_importstmt {
+                    let lint = ImportPosition::get_lints()[0];
+                    diags.insert(
+                        Diagnostic{
+                            level: Level::Warning,
+                            messages: (&[Message {
+                                pos: Position {
+                                    filename: module.filename.clone(),
+                                    line: stmt.line,
+                                    column: None,
+                                },
+                                style: Style::Line,
+                                message: format!(
+                                    "Importstmt should be placed at the top of the module"
+                                ),
+                                note: Some(lint.note.unwrap().clone().to_string()),
+                            }]).to_vec(),
+                            code: Some(DiagnosticId::Warning(WarningKind::ImportstmtPositionWarning))
+                        }
+                    );
+                }
+            }
+        }
+    }
+}
+
+// unusedimport check
+pub static Unused_Import: &Lint = &Lint {
+    name: stringify!("Unused_Import"),
+    level: Level::Warning,
+    desc: "Check for unused importstmt",
+    code: "W0411",
+    note: Some("Consider removing this importstmt")
+};
+
+declare_lint_pass!(UnusedImport => [Unused_Import]);
+
+fn record_use(name: &String, ctx: &mut Context) {
+    let re = Regex::new(r"[|:\[\]\{\}]").unwrap();
+    // # SchemaAttr.types, A|B, [A|B], {A|B:C}
+    let types: Vec<&str> = re.split(name).collect();
+    for t in types {
+        let t = t.to_string();
+        // name: a.b.c
+        let name: Vec<&str> = t.split(".").collect();
+        let firstname = name[0];
+        if ctx.import_names.contains_key(firstname) {
+            ctx.
+            used_import_names.
+            get_mut(&ctx.filename).unwrap().
+            insert(firstname.to_string());
+        }
+    }
+}
+
+impl DefaultLintPassImpl for UnusedImport{
+    fn check_module(&mut self, module: &ast::Module,diags: &mut IndexSet<Diagnostic>, ctx: &mut Context) {
+        ctx
+        .used_import_names
+        .insert(ctx.filename.clone(), IndexSet::default());
+    }
+
+    fn check_module_post(&mut self, module: &ast::Module, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context) {
+        let used_import_names = ctx.used_import_names.get(&ctx.filename).unwrap();
+        for stmt in &module.body {
+            if let ast::Stmt::Import(import_stmt) = &stmt.node {
+                if !used_import_names.contains(&import_stmt.name) {
+                    diags.insert(
+                        Diagnostic{
+                            level: Level::Warning,
+                            messages: (&[Message {
+                                pos: Position {
+                                    filename: module.filename.clone(),
+                                    line: stmt.line,
+                                    column: None,
+                                },
+                                style: Style::Line,
+                                message: format!(
+                                    "Module '{}' imported but unused.",
+                                    import_stmt.name
+                                ),
+                                note: None
+                            }]).to_vec(),
+                            code: Some(DiagnosticId::Warning(WarningKind::UnusedImportWarning))
+                        }
+                    );
+                }
+            }
+        }
+    }
+
+    fn check_identifier(&mut self, id: &ast::Identifier, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context){
+        if id.names.len() >= 2 {
+            let id_firstname = &id.names[0];
+            record_use(&id_firstname, ctx);
+        }
+    }
+
+    fn check_schema_attr(&mut self, id: &ast::Identifier, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context){
+
     }
 }

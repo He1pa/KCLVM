@@ -172,6 +172,6 @@ fn test_lint() {
     );
     resolver.resolve_import();
     resolver.check(kclvm_ast::MAIN_PKG);
-    resolver.lint_check(kclvm_ast::MAIN_PKG);
+    // resolver.lint_check(kclvm_ast::MAIN_PKG);
     resolver.handler.emit();
 }

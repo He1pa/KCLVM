@@ -85,7 +85,7 @@ impl<'ctx> Resolver<'ctx> {
         let filename = self.ctx.filename.clone();
         self.change_package_context(pkgpath, &filename);
         self.init_import_list();
-        self.check_unused_import(pkgpath);
+        // self.check_unused_import(pkgpath);
     }
 
     /// Init import list and store the module scope object into the scope map.
