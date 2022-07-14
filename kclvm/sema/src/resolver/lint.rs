@@ -13,7 +13,7 @@ use kclvm_ast::walker::MutSelfWalker;
 // 4. 将 lintpass 中的check_*方法添加到 lint_methods 宏中，如果有则跳过
 // 5. 将新的 lintpass 添加到 default_lint_passes 宏中，注意 `:` 前后都是LintPass的名字
 // 6. 如果第4步新增了 check_* 方法，则需要在遍历AST时调用，在 impl MutSelfWalker for Linter{...} 中重写 walk_* 方法。重写
-//    时除了调用 self.pass.check_* 函数外，还要复制 MutSelfWalker 中原有的 walk 方法，使得能够继续遍历。
+//    时除了调用 self.pass.check_* 函数外，还要复制 MutSelfWalker 中原有的 walk 方法，使得能够继续遍历子节点。
 
 
 pub type LintArray = Vec<&'static Lint>;
@@ -33,8 +33,8 @@ macro_rules! lint_array {
 macro_rules! lint_methods {
     ($macro:path, $args:tt) => (
         $macro!($args, [
-            fn check_module(module: &ast::Module, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context);
-            fn check_module_post(module: &ast::Module, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context);
+            fn check_module(module: &ast::Module);
+            fn check_module_post(module: &ast::Module);
             /*
             * Stmt
             */
@@ -57,7 +57,7 @@ macro_rules! lint_methods {
 
             // fn check_expr(expr: ast::Node<ast::Expr>);
             // fn check_quant_expr(quant_expr: ast::QuantExpr);
-            fn check_schema_attr(id: &ast::SchemaAttr, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context);
+            fn check_schema_attr(schema_attr: &ast::SchemaAttr);
             // fn check_if_expr(if_expr: ast::IfExpr);
             // fn check_unary_expr(unary_expr: ast::UnaryExpr);
             // fn check_binary_expr(binary_expr: ast::BinaryExpr);
@@ -80,7 +80,7 @@ macro_rules! lint_methods {
             // fn check_keyword(keyword: ast::Keyword);
             // fn check_arguments(arguments: ast::Arguments);
             // fn check_compare(compare: ast::Compare);
-            fn check_identifier(id: &ast::Identifier, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context);
+            fn check_identifier(id: &ast::Identifier);
             // fn check_number_lit(number_lit: ast::NumberLit);
             // fn check_string_lit(string_lit: ast::StringLit);
             // fn check_name_constant_lit(name_constant_lit: ast::NameConstantLit);
@@ -120,15 +120,15 @@ pub trait LintPass {
 // DefaultLintPassImpl 定义，为每一个lintpass提供lint_methods中方法的默认实现: 进行空检查
 
 macro_rules! expand_default_lint_pass_methods {
-    ([$($(#[$attr:meta])* fn $name:ident($($param:ident: $arg:ty),*);)*]) => (
-        $(#[inline(always)] fn $name(&mut self, $($param: $arg),*) {})*
+    ($diag:ty, $ctx:ty, [$($(#[$attr:meta])* fn $name:ident($($param:ident: $arg:ty),*);)*]) => (
+        $(#[inline(always)] fn $name(&mut self, diags: &mut $diag, ctx: &mut $ctx, $($param: $arg),*) {})*
     )
 }
 
 macro_rules! declare_default_lint_pass_impl {
     ([], [$($methods:tt)*]) => (
         pub trait DefaultLintPassImpl: LintPass {
-            expand_default_lint_pass_methods!([$($methods)*]);
+            expand_default_lint_pass_methods!(IndexSet<Diagnostic>, Context, [$($methods)*]);
         }
     )
 }
@@ -168,9 +168,9 @@ macro_rules! expand_combined_lint_pass_method {
 
 #[macro_export]
 macro_rules! expand_combined_lint_pass_methods {
-    ($passes:tt, [$($(#[$attr:meta])* fn $name:ident($($param:ident: $arg:ty),*);)*]) => (
-        $(fn $name(&mut self, $($param: $arg),*) {
-            expand_combined_lint_pass_method!($passes, self, $name, ($($param),*));
+    ($diags:ty, $ctx:ty, $passes:tt, [$($(#[$attr:meta])* fn $name:ident($($param:ident: $arg:ty),*);)*]) => (
+        $(fn $name(&mut self, diags: &mut $diags, ctx: &mut $ctx, $($param: $arg),*) {
+            expand_combined_lint_pass_method!($passes, self, $name, (diags, ctx, $($param),*));
         })*
     )
 }
@@ -198,7 +198,7 @@ macro_rules! declare_combined_lint_pass {
         }
 
         impl DefaultLintPassImpl for $name {
-            expand_combined_lint_pass_methods!([$($passes),*], $methods);
+            expand_combined_lint_pass_methods!(IndexSet<Diagnostic>, Context,[$($passes),*], $methods);
         }
 
         // #[allow(rustc::lint_pass_impl_without_macro)]
@@ -218,6 +218,7 @@ macro_rules! default_lint_passes {
             $args,
             [
                 ImportPosition: ImportPosition,
+                UnusedImport: UnusedImport,
             ]
         );
     };
@@ -255,14 +256,14 @@ macro_rules! declare_combined_default_pass {
 //  }
 //
 // impl DefaultLintPassImpl for CombinedLintPass {
-//     fn check_ident(&mut self, a: Ident, &mut diags: IndexSet<diagnostics>){
-//         self.LintPassA.check_ident(a, diags);
-//         self.LintPassB.check_ident(a, diags);
+//     fn check_ident(&mut self, diags: &mut IndexSet<diagnostics>, ctx: &mut Context, id: &ast::Identifier, ){
+//         self.LintPassA.check_ident(diags, ctx, id);
+//         self.LintPassB.check_ident(diags, ctx, id);
 //         ...
 //     }
-//     fn check_stmt(&mut self, a: &ast::Stmt, &mut diags: IndexSet<diagnostics>){
-//         self.LintPassA.check_stmt(a, diags);
-//         self.LintPassB.check_stmt(a, diags);
+//     fn check_stmt(&mut self, diags: &mut IndexSet<diagnostics>, ctx: &mut Context, module: &ast::Module){
+//         self.LintPassA.check_stmt(diags, ctx, module);
+//         self.LintPassB.check_stmt(diags, ctx, module);
 //         ...
 //     }
 // }
@@ -298,10 +299,31 @@ macro_rules! walk_list {
     };
 }
 
+#[macro_export]
+macro_rules! walk_if {
+    ($walker: expr, $method: ident, $value: expr) => {
+        match &$value {
+            Some(v) => $walker.$method(&v.node),
+            None => (),
+        }
+    };
+}
+
 impl<'ctx> MutSelfWalker<'ctx> for Linter<'_, CombinedLintPass>{
     fn walk_module(&mut self, module: &'ctx ast::Module){
-        self.pass.check_module(module, &mut self.diags, &mut self.ctx);
-        walk_list!(self, walk_stmt, module.body)
+        self.pass.check_module(&mut self.diags, &mut self.ctx, module);
+        walk_list!(self, walk_stmt, module.body);
+        self.pass.check_module_post(&mut self.diags, &mut self.ctx, module);
+    }
+
+    fn walk_identifier(&mut self, id: &'ctx ast::Identifier){
+        self.pass.check_identifier(&mut self.diags, &mut self.ctx, id);
+    }
+
+    fn walk_schema_attr(&mut self, schema_attr: &'ctx ast::SchemaAttr){
+        self.pass.check_schema_attr(&mut self.diags, &mut self.ctx, schema_attr);
+        walk_list!(self, walk_call_expr, schema_attr.decorators);
+        walk_if!(self, walk_expr, schema_attr.value);
     }
 }
 
@@ -329,7 +351,7 @@ pub static Import_Position: &Lint = &Lint {
 declare_lint_pass!(ImportPosition => [Import_Position]);
 
 impl DefaultLintPassImpl for ImportPosition{
-    fn check_module(&mut self, module: &ast::Module, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context) {
+    fn check_module(&mut self, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context, module: &ast::Module,) {
         let mut first_non_importstmt = std::u64::MAX;
         for stmt in &module.body{
             match &stmt.node{
@@ -389,24 +411,29 @@ fn record_use(name: &String, ctx: &mut Context) {
         // name: a.b.c
         let name: Vec<&str> = t.split(".").collect();
         let firstname = name[0];
-        if ctx.import_names.contains_key(firstname) {
-            ctx.
-            used_import_names.
-            get_mut(&ctx.filename).unwrap().
-            insert(firstname.to_string());
+        if let Some(import_names) = ctx.import_names.get(&ctx.filename){
+            if import_names.contains_key(firstname) {
+                ctx
+                .used_import_names
+                .get_mut(&ctx.filename)
+                .unwrap()
+                .insert(firstname.to_string());
+            }
         }
     }
 }
 
 impl DefaultLintPassImpl for UnusedImport{
-    fn check_module(&mut self, module: &ast::Module,diags: &mut IndexSet<Diagnostic>, ctx: &mut Context) {
+    fn check_module(&mut self, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context, module: &ast::Module) {
+        println!("{:?}", &ctx.filename);
         ctx
         .used_import_names
         .insert(ctx.filename.clone(), IndexSet::default());
     }
 
-    fn check_module_post(&mut self, module: &ast::Module, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context) {
+    fn check_module_post(&mut self, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context, module: &ast::Module) {
         let used_import_names = ctx.used_import_names.get(&ctx.filename).unwrap();
+        println!("{:?}", used_import_names);
         for stmt in &module.body {
             if let ast::Stmt::Import(import_stmt) = &stmt.node {
                 if !used_import_names.contains(&import_stmt.name) {
@@ -434,14 +461,15 @@ impl DefaultLintPassImpl for UnusedImport{
         }
     }
 
-    fn check_identifier(&mut self, id: &ast::Identifier, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context){
+    fn check_identifier(&mut self, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context, id: &ast::Identifier){
+        println!("{:?}", id.names);
         if id.names.len() >= 2 {
             let id_firstname = &id.names[0];
             record_use(&id_firstname, ctx);
         }
     }
 
-    fn check_schema_attr(&mut self, id: &ast::Identifier, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context){
-
+    fn check_schema_attr(&mut self, diags: &mut IndexSet<Diagnostic>, ctx: &mut Context, schema_attr: &ast::SchemaAttr){
+        record_use(&schema_attr.type_str.node, ctx);
     }
 }
