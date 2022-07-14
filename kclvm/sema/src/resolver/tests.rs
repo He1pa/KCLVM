@@ -1,7 +1,9 @@
+use super::Options;
+use super::Resolver;
 use crate::builtin::BUILTIN_FUNCTION_NAMES;
 use crate::pre_process::pre_process_program;
-use crate::resolver::resolve_program;
 use crate::resolver::lint;
+use crate::resolver::resolve_program;
 use crate::resolver::scope::*;
 use crate::ty::Type;
 use indexmap::IndexSet;
@@ -9,8 +11,6 @@ use kclvm_ast::ast;
 use kclvm_error::*;
 use kclvm_parser::{load_program, parse_program};
 use std::rc::Rc;
-use super::Options;
-use super::Resolver;
 
 #[test]
 fn test_scope() {
@@ -129,10 +129,7 @@ fn test_import_check() {
                 column: None,
             },
             style: Style::Line,
-            message: format!(
-                "Module '{}' is reimported multiple times.",
-                "a",
-            ),
+            message: format!("Module '{}' is reimported multiple times.", "a",),
             note: None,
         }],
         code: Some(DiagnosticId::Warning(WarningKind::ReimportWarning)),
@@ -146,10 +143,7 @@ fn test_import_check() {
                 column: None,
             },
             style: Style::Line,
-            message: format!(
-                "Module '{}' imported but unused.",
-                "abc",
-            ),
+            message: format!("Module '{}' imported but unused.", "abc",),
             note: None,
         }],
         code: Some(DiagnosticId::Warning(WarningKind::UnusedImportWarning)),
@@ -157,7 +151,6 @@ fn test_import_check() {
     assert_eq!(diagnostics, resolver.handler.diagnostics);
     resolver.handler.emit();
 }
-
 
 #[test]
 fn test_lint() {

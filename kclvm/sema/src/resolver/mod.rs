@@ -5,6 +5,7 @@ mod config;
 mod format;
 pub mod global;
 mod import;
+mod lint;
 mod r#loop;
 mod node;
 mod para;
@@ -14,7 +15,6 @@ pub mod scope;
 mod ty;
 mod ty_alias;
 mod var;
-mod lint;
 
 #[cfg(test)]
 mod tests;
@@ -32,7 +32,7 @@ use kclvm_error::*;
 
 use crate::ty::TypeContext;
 
-use self::lint::{Linter, ImportPosition};
+use self::lint::{ImportPosition, Linter};
 use self::scope::{builtin_scope, ProgramScope};
 
 /// Resolver is responsible for program semantic checking, mainly
