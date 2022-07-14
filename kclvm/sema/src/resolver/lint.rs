@@ -3,46 +3,35 @@ use kclvm_error::{Diagnostic, DiagnosticId, Level, ErrorKind, WarningKind, Messa
 use kclvm_ast::ast;
 use super::Resolver;
 use kclvm_ast::walker::MutSelfWalker;
-pub struct Lint {
-    /// A string identifier for the lint.
-    pub name: &'static str,
 
-    /// Level for the lint.
-    pub level: Level,
+// 定义lint检查的步骤:
+// 1. 定义 Lint -> pub static Import_Position: &Lint = &Lint {...}
+// 2. 定义 lintpass -> declare_lint_pass!(ImportPosition => [Import_Position]); `=>`前为 LintPass，后为刚刚定义的 Lint
+//    一个 lintpass 可以生成多个lint（一次检查发现多种 lint 错误）
+// 3. 实现 lintpass检查，impl DefaultLintPassImpl for ImportPosition{...}
+// 4. 将 lintpass 中的check_*方法添加到 lint_methods 宏中，如果有则跳过
+// 5. 将新的 lintpass 添加到 default_lint_passes 宏中，注意 `:` 前后都是LintPass的名字
+// 6. 如果第4步新增了 check_* 方法，则需要在遍历AST时调用，在 impl MutSelfWalker for Linter{...} 中重写 walk_* 方法。重写
+//    时除了调用 self.pass.check_* 函数外，还要复制 MutSelfWalker 中原有的 walk 方法，使得能够继续遍历。
 
-    /// Description of the lint or the issue it detects.
-    /// e.g., "imports that are never used"
-    pub desc: &'static str,
-    
-    // Error/Warning code
-    pub code: &'static str,
+
+pub type LintArray = Vec<&'static Lint>;
+
+/// Declares a static `LintArray` and return it as an expression.
+#[macro_export]
+macro_rules! lint_array {
+    ($( $lint:expr ),* ,) => { lint_array!( $($lint),* ) };
+    ($( $lint:expr ),*) => {{
+        vec![$($lint),*]
+    }}
 }
 
-
-
-pub trait LintPass {
-    fn name(&self) -> &'static str;
-}
-
-macro_rules! expand_default_lint_pass_methods {
-    ([$($(#[$attr:meta])* fn $name:ident($($param:ident: $arg:ty),*);)*]) => (
-        $(#[inline(always)] fn $name(&mut self, $($param: $arg),*) {})*
-    )
-}
-
-macro_rules! declare_default_lint_pass_impl {
-    ([], [$($methods:tt)*]) => (
-        pub trait DefaultLintPassImpl: LintPass {
-            expand_default_lint_pass_methods!([$($methods)*]);
-        }
-    )
-}
-
+// lintpass 中需要实现的方法的汇总，新增lint和lintpass时，按需补充
+// DefaultLintPassImpl 中有这些方法的默认实现（空检查），所以lintpass也只需要实现自己所需要的检查函数
 #[macro_export]
 macro_rules! lint_methods {
     ($macro:path, $args:tt) => (
         $macro!($args, [
-
             fn check_module(module: &ast::Module, diags: &mut IndexSet<Diagnostic>);
             /*
             * Stmt
@@ -100,19 +89,48 @@ macro_rules! lint_methods {
     )
 }
 
-lint_methods!(declare_default_lint_pass_impl, []);
+// lint 定义
+pub struct Lint {
+    /// A string identifier for the lint.
+    pub name: &'static str,
 
-/// Declares a static `LintArray` and return it as an expression.
-#[macro_export]
-macro_rules! lint_array {
-    ($( $lint:expr ),* ,) => { lint_array!( $($lint),* ) };
-    ($( $lint:expr ),*) => {{
-        vec![$($lint),*]
-    }}
+    /// Level for the lint.
+    pub level: Level,
+
+    /// Description of the lint or the issue it detects.
+    /// e.g., "imports that are never used"
+    pub desc: &'static str,
+    
+    // Error/Warning code
+    pub code: &'static str,
 }
 
-pub type LintArray = Vec<&'static Lint>;
 
+// lint pass 定义
+pub trait LintPass {
+    fn name(&self) -> &'static str;
+}
+
+
+// DefaultLintPassImpl 定义，为每一个lintpass提供lint_methods中方法的默认实现: 进行空检查
+
+macro_rules! expand_default_lint_pass_methods {
+    ([$($(#[$attr:meta])* fn $name:ident($($param:ident: $arg:ty),*);)*]) => (
+        $(#[inline(always)] fn $name(&mut self, $($param: $arg),*) {})*
+    )
+}
+
+macro_rules! declare_default_lint_pass_impl {
+    ([], [$($methods:tt)*]) => (
+        pub trait DefaultLintPassImpl: LintPass {
+            expand_default_lint_pass_methods!([$($methods)*]);
+        }
+    )
+}
+
+lint_methods!(declare_default_lint_pass_impl, []);
+
+// 定义lintpass的宏，并绑定一组对应的lint
 #[macro_export]
 macro_rules! declare_lint_pass {
     ($(#[$m:meta])* $name:ident => [$($lint:expr),* $(,)?]) => {
@@ -121,6 +139,7 @@ macro_rules! declare_lint_pass {
     };
 }
 
+// 为lintpass实现lint中的fn name() 和 get_lints()方法
 /// Implements `LintPass for $ty` with the given list of `Lint` statics.
 #[macro_export]
 macro_rules! impl_lint_pass {
@@ -134,6 +153,120 @@ macro_rules! impl_lint_pass {
     };
 }
 
+// 定义 CombinedLintPass 的宏
+#[macro_export]
+macro_rules! expand_combined_lint_pass_method {
+    ([$($passes:ident),*], $self: ident, $name: ident, $params:tt) => ({
+        $($self.$passes.$name $params;)*
+    })
+}
+
+#[macro_export]
+macro_rules! expand_combined_lint_pass_methods {
+    ($passes:tt, [$($(#[$attr:meta])* fn $name:ident($($param:ident: $arg:ty),*);)*]) => (
+        $(fn $name(&mut self, $($param: $arg),*) {
+            expand_combined_lint_pass_method!($passes, self, $name, ($($param),*));
+        })*
+    )
+}
+
+#[macro_export]
+macro_rules! declare_combined_lint_pass {
+    ([$v:vis $name:ident, [$($passes:ident: $constructor:expr,)*]], $methods:tt) => (
+        #[allow(non_snake_case)]
+        $v struct $name {
+            $($passes: $passes,)*
+        }
+
+        impl $name {
+            $v fn new() -> Self {
+                Self {
+                    $($passes: $constructor,)*
+                }
+            }
+
+            $v fn get_lints() -> LintArray {
+                let mut lints = Vec::new();
+                $(lints.extend_from_slice(&$passes::get_lints());)*
+                lints
+            }
+        }
+
+        impl DefaultLintPassImpl for $name {
+            expand_combined_lint_pass_methods!([$($passes),*], $methods);
+        }
+
+        // #[allow(rustc::lint_pass_impl_without_macro)]
+        impl LintPass for $name {
+            fn name(&self) -> &'static str {
+                // todo
+                panic!()
+            }
+        }
+    )
+}
+
+
+macro_rules! default_lint_passes {
+    ($macro:path, $args:tt) => {
+        $macro!(
+            $args,
+            [
+                ImportPosition: ImportPosition,
+            ]
+        );
+    };
+}
+
+macro_rules! declare_combined_default_pass {
+    ([$name:ident], $passes:tt) => (
+        lint_methods!(declare_combined_lint_pass, [pub $name, $passes]);
+    )
+}
+
+// combined lintpass 定义. 从default_lint_passes宏开始，将所有默认的lintpass的检查方法汇总到CombinedLintPass中
+// 最终生成的代码如：
+// pub struct CombinedLintPass {
+//     LintPassA: LintPassA;
+//     LintPassB: LintPassB;
+//     ...
+// }
+//
+// impl CombinedLintPass{
+//     pub fn new() -> CombinedLintPass { 
+//        CombinedLintPass {
+//            LintPassA: LintPassA,
+//            LintPassB: LintPassB,
+//            ...
+//        } 
+//     }
+//     pub fn get_lints() -> LintArray {
+//         let mut lints = Vec::new();
+//         lints.extend_from_slice(&LintPassA::get_lints());
+//         lints.extend_from_slice(&LintPassB::get_lints());
+//         ...
+//         lints
+//      }    
+//  }
+//
+// impl DefaultLintPassImpl for CombinedLintPass {
+//     fn check_ident(&mut self, a: Ident, &mut diags: IndexSet<diagnostics>){
+//         self.LintPassA.check_ident(a, diags);
+//         self.LintPassB.check_ident(a, diags);
+//         ...
+//     }
+//     fn check_stmt(&mut self, a: &ast::Stmt, &mut diags: IndexSet<diagnostics>){
+//         self.LintPassA.check_stmt(a, diags);
+//         self.LintPassB.check_stmt(a, diags);
+//         ...
+//     }
+/// }
+default_lint_passes!(declare_combined_default_pass, [CombinedLintPass]);
+
+
+// 具体的lint 和lintpass 定义，
+
+// importposition check
 pub static Import_Position: &Lint = &Lint {
     name: stringify!("ImportPosition"),
     level: Level::Warning,
@@ -145,20 +278,20 @@ declare_lint_pass!(ImportPosition => [Import_Position]);
 
 impl DefaultLintPassImpl for ImportPosition{
     fn check_module(&mut self, module: &ast::Module, diags: &mut IndexSet<Diagnostic>) {
-        let mut firststmt = 2000;
+        let mut first_non_importstmt = 2000;
         for stmt in &module.body{
             match &stmt.node{
                 ast::Stmt::Import(_ImportStmt) => {}
                 _ => {
-                    if stmt.line < firststmt {
-                        firststmt = stmt.line
+                    if stmt.line < first_non_importstmt {
+                        first_non_importstmt = stmt.line
                     }
                 }
             }
         }
         for stmt in &module.body{
-            if let ast::Stmt::Import(import_stmt) = &stmt.node {
-                if stmt.line > firststmt {
+            if let ast::Stmt::Import(_import_stmt) = &stmt.node {
+                if stmt.line > first_non_importstmt {
                     diags.insert(
                         Diagnostic{
                             level: Level::Warning,
@@ -184,16 +317,20 @@ impl DefaultLintPassImpl for ImportPosition{
     }
 }
 
-pub struct Linter<T: LintPass>{
+
+
+//--------linter--------------
+
+pub struct Linter<'l, T: LintPass>{
     pass: T,
-    diags: IndexSet<Diagnostic>
+    diags: &'l mut IndexSet<Diagnostic>
 }
 
-impl Linter<ImportPosition> {
-    pub fn new() -> Self{
-        Linter::<ImportPosition> {
-            pass: ImportPosition,
-            diags: IndexSet::default()
+impl<'l> Linter<'l, CombinedLintPass> {
+    pub fn new(diags: &'l mut IndexSet<Diagnostic>) -> Self{
+        Linter::<'l, CombinedLintPass> {
+            pass: CombinedLintPass::new(),
+            diags
         }
 
     }
@@ -208,7 +345,9 @@ macro_rules! walk_list {
     };
 }
 
-impl<'ctx> MutSelfWalker<'ctx> for Linter<ImportPosition>{
+
+
+impl<'ctx> MutSelfWalker<'ctx> for Linter<'_, CombinedLintPass>{
     fn walk_module(&mut self, module: &'ctx ast::Module){
         self.pass.check_module(module, &mut self.diags);
         walk_list!(self, walk_stmt, module.body)
@@ -217,7 +356,7 @@ impl<'ctx> MutSelfWalker<'ctx> for Linter<ImportPosition>{
 
 impl<'ctx> Resolver<'ctx> {
     pub fn lint_check(&mut self, pkgpath: &str){
-        let mut linter = Linter::<ImportPosition>::new();
+        let mut linter = Linter::<CombinedLintPass>::new(&mut self.handler.diagnostics);
         match self.program.pkgs.get(pkgpath) {
             Some(modules) => {
                 for module in modules {
@@ -225,9 +364,6 @@ impl<'ctx> Resolver<'ctx> {
                 }
             }
             None => {}
-        }
-        for diag in linter.diags{
-            self.handler.diagnostics.insert(diag);
         }
     }
 }
