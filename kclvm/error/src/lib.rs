@@ -224,7 +224,7 @@ impl Handler {
     ///     Message {
     ///         pos: Position::dummy_pos(),
     ///         style: Style::LineAndColumn,
-    ///         message: "a imported but unused.".to_string(),
+    ///         message: "Module 'a' imported but unused.".to_string(),
     ///         note: None,
     ///     }],
     /// );

@@ -1,3 +1,69 @@
+//! This file is the implementation of KCLLint, which is used to perform some additional checks on KCL code.
+//! The main structures of the file are Lint, LintPass, CombinedLintPass and Linter. 
+//! For details see the: https://github.com/KusionStack/KCLVM/issues/109
+//! 
+//! Steps to define a new lint:
+//! 1. Define a static instance of the `Lint` structure，e.g.,
+//!    
+//!     ```rust,no_run
+//!    pub static Import_Position: &Lint = &Lint {
+//!         ...
+//!    }
+//!    ```
+//! 
+//! 2. Define a lintpass, which is used to implement the checking process，e.g.,
+//!    
+//!     ```rust,no_run
+//!    declare_lint_pass!(ImportPosition => [Import_Position]);
+//!    ```
+//! 
+//!    The `ImportPosition` is the defined LintPass structure and the `Import_Position` is the `Lint` structure 
+//!    defined in step 1. Here is a `LintArray`, which means that multiple lint checks can be implemented 
+//!    in a single lintpass.
+//! 
+//! 3. Implement the lintpass check process, e.g.,
+//! 
+//!    ```rust,no_run
+//!    impl LintPass for ImportPosition{
+//!        fn check_module(&mut self, diags: &mut IndexSet<Diagnostic>, ctx: &mut LintContext,module: &ast::Module){
+//!            ...
+//!        }
+//!    }
+//!    ```
+//! 
+//! 4. Add the `check_*` methods in lintpass to the macro `lint_methods`, or skip it if it exists
+//! 
+//!    ```rust,no_run
+//!    macro_rules! lint_methods {
+//!        ($macro:path, $args:tt) => (
+//!            $macro!($args, [
+//!                fn check_module(module: &ast::Module);
+//!            ]);
+//!        )
+//!    } 
+//!    ```
+//! 
+//! 5. Add the new lintpass to the macro `default_lint_passes`, noting that `:` is preceded and followed by 
+//! the name of the lintpass. e.g.,
+//! 
+//!    ```rust,no_run
+//!    macro_rules! default_lint_passes {
+//!        ($macro:path, $args:tt) => {
+//!            $macro!(
+//!                $args,
+//!                [
+//!                    ImportPosition: ImportPosition, 
+//!                ]
+//!            );
+//!        };
+//!    }
+//!    ```
+//! 
+//! 6. If new `check_*` method was added in step 4, it needs to override the walk_* method in Linter
+//! In addition to calling the self.pass.check_* function, the original walk method in MutSelfWalker 
+//! should be copied here so that it can continue to traverse the child nodes.
+//! 
+ 
 use super::Resolver;
 use indexmap::{IndexMap, IndexSet};
 use kclvm_ast::ast;
@@ -7,29 +73,10 @@ use kclvm_error::{
 };
 use regex::Regex;
 
-// 定义lint检查的步骤:
-// 1. 定义 Lint -> pub static Import_Position: &Lint = &Lint {...}
-// 2. 定义 lintpass -> declare_lint_pass!(ImportPosition => [Import_Position]); `=>`前为 LintPass，后为1中定义的 Lint
-//    一个 lintpass 可以生成多个lint（一次检查发现多种 lint 错误）
-// 3. 实现 lintpass 的检查逻辑，impl LintPass for ImportPosition{...}
-// 4. 将 lintpass 中的check_*方法添加到 lint_methods 宏中，如果有则跳过
-// 5. 将新的 lintpass 添加到 default_lint_passes 宏中，注意 `:` 前后都是LintPass的名字
-// 6. 如果第4步新增了 check_* 方法，则需要在遍历AST时调用，在 impl MutSelfWalker for Linter{...} 中重写 walk_* 方法。重写
-//    时除了调用 self.pass.check_* 函数外，还要复制 MutSelfWalker 中原有的 walk 方法，使得能够继续遍历子节点。
-
-pub type LintArray = Vec<&'static Lint>;
-
-/// Declares a static `LintArray` and return it as an expression.
-#[macro_export]
-macro_rules! lint_array {
-    ($( $lint:expr ),* ,) => { lint_array!( $($lint),* ) };
-    ($( $lint:expr ),*) => {{
-        vec![$($lint),*]
-    }}
-}
-
-// lintpass 中需要实现的方法的汇总，新增lint和lintpass时，按需补充
-// DefaultLintPassImpl 中有这些方法的默认实现（空检查），所以lintpass也只需要实现自己所需要的检查函数
+/// A summary of the methods that need to be implemented in lintpass, to be added when constructing new lint 
+/// lint and lintpass. When defining lintpass, the default implementation of these methods is provided: null 
+/// check (see macro `expand_default_lint_pass_methods`). So what need to do is to override the specific 
+/// `check_*` function.
 #[macro_export]
 macro_rules! lint_methods {
     ($macro:path, $args:tt) => (
@@ -92,7 +139,8 @@ macro_rules! lint_methods {
     )
 }
 
-// lint struct 定义
+/// Definition of `Lint` struct
+/// Note that Lint declarations don't carry any "state" - they are merely global identifiers and descriptions of lints.
 pub struct Lint {
     /// A string identifier for the lint.
     pub name: &'static str,
@@ -107,17 +155,29 @@ pub struct Lint {
     // Error/Warning code
     pub code: &'static str,
 
-    // Error/Warning code
+    // Suggest methods to fix this problem
     pub note: Option<&'static str>,
 }
 
-// 为每一个lintpass提供lint_methods中方法的默认实现: 进行空检查
+pub type LintArray = Vec<&'static Lint>;
+
+/// Declares a static `LintArray` and return it as an expression.
+#[macro_export]
+macro_rules! lint_array {
+    ($( $lint:expr ),* ,) => { lint_array!( $($lint),* ) };
+    ($( $lint:expr ),*) => {{
+        vec![$($lint),*]
+    }}
+}
+
+/// Provide a default implementation of the methods in lint_methods for each lintpass: null checking
 macro_rules! expand_default_lint_pass_methods {
     ($diag:ty, $ctx:ty, [$($(#[$attr:meta])* fn $name:ident($($param:ident: $arg:ty),*);)*]) => (
         $(#[inline(always)] fn $name(&mut self, diags: &mut $diag, ctx: &mut $ctx, $($param: $arg),*) {})*
     )
 }
 
+/// Definition of `LintPass` trait
 macro_rules! declare_default_lint_pass_impl {
     ([], [$($methods:tt)*]) => (
         pub trait LintPass {
@@ -125,10 +185,12 @@ macro_rules! declare_default_lint_pass_impl {
         }
     )
 }
-// lint pass 定义, 
+
 lint_methods!(declare_default_lint_pass_impl, []);
 
-// 定义lintpass的宏，并绑定一组对应的lint
+/// The macro to define the LintPass and bind a set of corresponding Lint.
+/// 
+/// Here is a `LintArray`, which means that multiple lint checks can be implemented in a single lintpass.
 #[macro_export]
 macro_rules! declare_lint_pass {
     ($(#[$m:meta])* $name:ident => [$($lint:expr),* $(,)?]) => {
@@ -137,7 +199,6 @@ macro_rules! declare_lint_pass {
     };
 }
 
-// 为lintpass实现get_lints()方法
 /// Implements `LintPass for $ty` with the given list of `Lint` statics.
 #[macro_export]
 macro_rules! impl_lint_pass {
@@ -148,8 +209,9 @@ macro_rules! impl_lint_pass {
     };
 }
 
-/// combinedlintpass 的 check_* 方法中调用各个 lintpass 的 check_* 方法
-/// ```rust
+/// Call the `check_*` method of each lintpass in CombinedLintLass.check_*.
+/// 
+/// ```rust,no_run
 ///     fn check_ident(&mut self, diags: &mut IndexSet<diagnostics>, ctx: &mut LintContext, id: &ast::Identifier, ){
 ///         self.LintPassA.check_ident(diags, ctx, id);
 ///         self.LintPassB.check_ident(diags, ctx, id);
@@ -163,10 +225,12 @@ macro_rules! expand_combined_lint_pass_method {
     })
 }
 
-/// combinedlintpass 实现所有check_*方法
-/// ```rust
+/// Expand all methods defined in macro `lint_methods` in the `CombinedLintLass`.
+/// 
+/// ```rust,no_run
 ///     fn check_ident(&mut self, diags: &mut IndexSet<diagnostics>, ctx: &mut LintContext, id: &ast::Identifier){};
 ///     fn check_stmt(&mut self, diags: &mut IndexSet<diagnostics>, ctx: &mut LintContext, module: &ast::Module){};
+///     ...
 ///  ```
 #[macro_export]
 macro_rules! expand_combined_lint_pass_methods {
@@ -177,9 +241,9 @@ macro_rules! expand_combined_lint_pass_methods {
     )
 }
 
-/// 生成 CombinedLintPass 的宏. 在 default_lint_passes 宏中调用，将所有默认的 lintpass 的检查方法汇总到 CombinedLintPass 中
-/// 最终生成的代码如：
-/// ```rust
+/// Expand all definitions of `CombinedLintPass`. The results are as follows：
+/// 
+/// ```rust,no_run
 /// pub struct CombinedLintPass {
 ///     LintPassA: LintPassA;
 ///     LintPassB: LintPassB;
@@ -245,12 +309,14 @@ macro_rules! declare_combined_lint_pass {
     )
 }
 
-/// 所有定义的 LintPass
 macro_rules! default_lint_passes {
     ($macro:path, $args:tt) => {
         $macro!(
             $args,
-            [ImportPosition: ImportPosition, UnusedImport: UnusedImport,]
+            [
+                ImportPosition: ImportPosition, 
+                UnusedImport: UnusedImport,
+            ]
         );
     };
 }
@@ -262,16 +328,18 @@ macro_rules! declare_combined_default_pass {
     )
 }
 
-// 定义 CombinedLintPass
+// Define `CombinedLintPass`.
 default_lint_passes!(declare_combined_default_pass, [CombinedLintPass]);
 
-// Linter结构用于遍历AST，并且在遍历时调用 CombinedLintPass 中的check方法
+/// The struct `Linter` is used to traverse the AST and call the `check_*` method defined in `CombinedLintPass`.
 pub struct Linter<'l, T: LintPass> {
     pass: T,
     diags: &'l mut IndexSet<Diagnostic>,
     ctx: LintContext,
 }
-
+/// Record the information at `LintContext` when traversing the AST for analysis across AST nodes, e.g., record 
+/// used importstmt(used_import_names) when traversing `ast::Identifier` and `ast::SchemaAttr`, and detect unused 
+/// importstmt after traversing the entire module. 
 pub struct LintContext{
     /// What source file are we in.
     pub filename: String,
@@ -345,9 +413,7 @@ impl<'ctx> MutSelfWalker<'ctx> for Linter<'_, CombinedLintPass> {
     }
 }
 
-// lint 定义 和 lintpass 的实现，
 
-// 检查import语句应该在文件头
 pub static Import_Position: &Lint = &Lint {
     name: stringify!("Import_Position"),
     level: Level::Warning,
@@ -405,7 +471,6 @@ impl LintPass for ImportPosition {
     }
 }
 
-// unusedimport check
 pub static Unused_Import: &Lint = &Lint {
     name: stringify!("Unused_Import"),
     level: Level::Warning,
