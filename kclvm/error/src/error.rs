@@ -98,7 +98,7 @@ pub struct Warning {
 pub enum WarningKind {
     UnusedImportWarning,
     ReimportWarning,
-    ImportstmtPositionWarning,
+    ImportPositionWarning,
 }
 
 impl std::fmt::Display for WarningKind {
