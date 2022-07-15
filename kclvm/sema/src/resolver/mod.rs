@@ -101,8 +101,6 @@ pub struct Context {
     pub local_vars: Vec<String>,
     /// Import pkgpath and name
     pub import_names: IndexMap<String, IndexMap<String, String>>,
-    /// Used import nams
-    pub used_import_names: IndexMap<String, IndexSet<String>>,
     /// Are we resolving the left value.
     pub l_value: bool,
     /// Are we resolving the statement start position.
