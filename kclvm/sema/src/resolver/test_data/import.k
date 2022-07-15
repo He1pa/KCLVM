@@ -13,7 +13,6 @@ schema Main(d.Parent):
     list_union_type: [e.UnionType|int]
     dict_union_type: {g.UnionType|int:float}
 
-# todo: import position check 
 import .b  
 
 if a._a > 1:
@@ -24,5 +23,5 @@ else:
     _c = 3
 
 p = Main{
-    age = a._a
+    age = b._b
 }

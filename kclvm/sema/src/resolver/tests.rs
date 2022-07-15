@@ -86,7 +86,7 @@ fn test_resolve_program_fail() {
 }
 
 #[test]
-fn test_import_check() {
+fn test_lint() {
     let mut program = load_program(&["./src/resolver/test_data/import.k"], None).unwrap();
     pre_process_program(&mut program);
     let mut resolver = Resolver::new(
@@ -98,6 +98,7 @@ fn test_import_check() {
     );
     resolver.resolve_import();
     resolver.check(kclvm_ast::MAIN_PKG);
+
     let root = &program.root.clone();
     let filename = root.clone() + "/import.k";
 
@@ -139,31 +140,28 @@ fn test_import_check() {
         messages: vec![Message {
             pos: Position {
                 filename: filename.clone(),
+                line: 16,
+                column: None,
+            },
+            style: Style::Line,
+            message: format!("Importstmt should be placed at the top of the module"),
+            note: Some("Consider moving tihs statement to the top of the file".to_string()),
+        }],
+        code: Some(DiagnosticId::Warning(WarningKind::ImportPositionWarning)),
+    });
+    diagnostics.insert(Diagnostic {
+        level: Level::Warning,
+        messages: vec![Message {
+            pos: Position {
+                filename: filename.clone(),
                 line: 1,
                 column: None,
             },
             style: Style::Line,
             message: format!("Module '{}' imported but unused.", "abc",),
-            note: None,
+            note: Some("Consider removing this statement".to_string()),
         }],
         code: Some(DiagnosticId::Warning(WarningKind::UnusedImportWarning)),
     });
     assert_eq!(diagnostics, resolver.handler.diagnostics);
-    resolver.handler.emit();
-}
-
-#[test]
-fn test_lint() {
-    let mut program = load_program(&["./src/resolver/test_data/import.k"], None).unwrap();
-    pre_process_program(&mut program);
-    let mut resolver = Resolver::new(
-        &program,
-        Options {
-            raise_err: true,
-            config_auto_fix: false,
-        },
-    );
-    resolver.resolve_import();
-    resolver.check(kclvm_ast::MAIN_PKG);
-    resolver.handler.emit();
 }

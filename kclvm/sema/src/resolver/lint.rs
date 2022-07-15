@@ -1,28 +1,28 @@
 //! This file is the implementation of KCLLint, which is used to perform some additional checks on KCL code.
-//! The main structures of the file are Lint, LintPass, CombinedLintPass and Linter. 
+//! The main structures of the file are Lint, LintPass, CombinedLintPass and Linter.
 //! For details see the: https://github.com/KusionStack/KCLVM/issues/109
-//! 
+//!
 //! Steps to define a new lint:
 //! 1. Define a static instance of the `Lint` structure，e.g.,
 //!    
 //!     ```rust,no_run
-//!    pub static Import_Position: &Lint = &Lint {
+//!    pub static IMPORT_Position: &Lint = &Lint {
 //!         ...
 //!    }
 //!    ```
-//! 
+//!
 //! 2. Define a lintpass, which is used to implement the checking process，e.g.,
 //!    
 //!     ```rust,no_run
-//!    declare_lint_pass!(ImportPosition => [Import_Position]);
+//!    declare_lint_pass!(ImportPosition => [IMPORT_POSITION]);
 //!    ```
-//! 
-//!    The `ImportPosition` is the defined LintPass structure and the `Import_Position` is the `Lint` structure 
-//!    defined in step 1. Here is a `LintArray`, which means that multiple lint checks can be implemented 
+//!
+//!    The `ImportPosition` is the defined LintPass structure and the `IMPORT_POSITION` is the `Lint` structure
+//!    defined in step 1. Here is a `LintArray`, which means that multiple lint checks can be implemented
 //!    in a single lintpass.
-//! 
+//!
 //! 3. Implement the lintpass check process, e.g.,
-//! 
+//!
 //!    ```rust,no_run
 //!    impl LintPass for ImportPosition{
 //!        fn check_module(&mut self, diags: &mut IndexSet<Diagnostic>, ctx: &mut LintContext,module: &ast::Module){
@@ -30,9 +30,9 @@
 //!        }
 //!    }
 //!    ```
-//! 
+//!
 //! 4. Add the `check_*` methods in lintpass to the macro `lint_methods`, or skip it if it exists
-//! 
+//!
 //!    ```rust,no_run
 //!    macro_rules! lint_methods {
 //!        ($macro:path, $args:tt) => (
@@ -40,42 +40,41 @@
 //!                fn check_module(module: &ast::Module);
 //!            ]);
 //!        )
-//!    } 
+//!    }
 //!    ```
-//! 
-//! 5. Add the new lintpass to the macro `default_lint_passes`, noting that `:` is preceded and followed by 
+//!
+//! 5. Add the new lintpass to the macro `default_lint_passes`, noting that `:` is preceded and followed by
 //! the name of the lintpass. e.g.,
-//! 
+//!
 //!    ```rust,no_run
 //!    macro_rules! default_lint_passes {
 //!        ($macro:path, $args:tt) => {
 //!            $macro!(
 //!                $args,
 //!                [
-//!                    ImportPosition: ImportPosition, 
+//!                    ImportPosition: ImportPosition,
 //!                ]
 //!            );
 //!        };
 //!    }
 //!    ```
-//! 
+//!
 //! 6. If new `check_*` method was added in step 4, it needs to override the walk_* method in Linter
-//! In addition to calling the self.pass.check_* function, the original walk method in MutSelfWalker 
+//! In addition to calling the self.pass.check_* function, the original walk method in MutSelfWalker
 //! should be copied here so that it can continue to traverse the child nodes.
-//! 
- 
+//!
+
 use super::Resolver;
 use indexmap::{IndexMap, IndexSet};
 use kclvm_ast::ast;
 use kclvm_ast::walker::MutSelfWalker;
-use kclvm_error::{
-    Diagnostic, DiagnosticId, Level, Message, Position, Style, WarningKind,
-};
+use kclvm_ast::{walk_if, walk_list};
+use kclvm_error::{Diagnostic, DiagnosticId, Level, Message, Position, Style, WarningKind};
 use regex::Regex;
 
-/// A summary of the methods that need to be implemented in lintpass, to be added when constructing new lint 
-/// lint and lintpass. When defining lintpass, the default implementation of these methods is provided: null 
-/// check (see macro `expand_default_lint_pass_methods`). So what need to do is to override the specific 
+/// A summary of the methods that need to be implemented in lintpass, to be added when constructing new lint
+/// lint and lintpass. When defining lintpass, the default implementation of these methods is provided: null
+/// check (see macro `expand_default_lint_pass_methods`). So what need to do is to override the specific
 /// `check_*` function.
 #[macro_export]
 macro_rules! lint_methods {
@@ -189,7 +188,7 @@ macro_rules! declare_default_lint_pass_impl {
 lint_methods!(declare_default_lint_pass_impl, []);
 
 /// The macro to define the LintPass and bind a set of corresponding Lint.
-/// 
+///
 /// Here is a `LintArray`, which means that multiple lint checks can be implemented in a single lintpass.
 #[macro_export]
 macro_rules! declare_lint_pass {
@@ -210,7 +209,7 @@ macro_rules! impl_lint_pass {
 }
 
 /// Call the `check_*` method of each lintpass in CombinedLintLass.check_*.
-/// 
+///
 /// ```rust,no_run
 ///     fn check_ident(&mut self, diags: &mut IndexSet<diagnostics>, ctx: &mut LintContext, id: &ast::Identifier, ){
 ///         self.LintPassA.check_ident(diags, ctx, id);
@@ -226,7 +225,7 @@ macro_rules! expand_combined_lint_pass_method {
 }
 
 /// Expand all methods defined in macro `lint_methods` in the `CombinedLintLass`.
-/// 
+///
 /// ```rust,no_run
 ///     fn check_ident(&mut self, diags: &mut IndexSet<diagnostics>, ctx: &mut LintContext, id: &ast::Identifier){};
 ///     fn check_stmt(&mut self, diags: &mut IndexSet<diagnostics>, ctx: &mut LintContext, module: &ast::Module){};
@@ -242,7 +241,7 @@ macro_rules! expand_combined_lint_pass_methods {
 }
 
 /// Expand all definitions of `CombinedLintPass`. The results are as follows：
-/// 
+///
 /// ```rust,no_run
 /// pub struct CombinedLintPass {
 ///     LintPassA: LintPassA;
@@ -313,15 +312,11 @@ macro_rules! default_lint_passes {
     ($macro:path, $args:tt) => {
         $macro!(
             $args,
-            [
-                ImportPosition: ImportPosition, 
-                UnusedImport: UnusedImport,
-            ]
+            [ImportPosition: ImportPosition, UnusedImport: UnusedImport,]
         );
     };
 }
 
- 
 macro_rules! declare_combined_default_pass {
     ([$name:ident], $passes:tt) => (
         lint_methods!(declare_combined_lint_pass, [pub $name, $passes]);
@@ -337,17 +332,18 @@ pub struct Linter<'l, T: LintPass> {
     diags: &'l mut IndexSet<Diagnostic>,
     ctx: LintContext,
 }
-/// Record the information at `LintContext` when traversing the AST for analysis across AST nodes, e.g., record 
-/// used importstmt(used_import_names) when traversing `ast::Identifier` and `ast::SchemaAttr`, and detect unused 
-/// importstmt after traversing the entire module. 
-pub struct LintContext{
+
+/// Record the information at `LintContext` when traversing the AST for analysis across AST nodes, e.g., record
+/// used importstmt(used_import_names) when traversing `ast::Identifier` and `ast::SchemaAttr`, and detect unused
+/// importstmt after traversing the entire module.
+pub struct LintContext {
     /// What source file are we in.
     pub filename: String,
     /// Import pkgpath and name
     pub import_names: IndexMap<String, IndexMap<String, String>>,
     /// Used import nams
     pub used_import_names: IndexMap<String, IndexSet<String>>,
-} 
+}
 
 impl<'l> Linter<'l, CombinedLintPass> {
     pub fn new(diags: &'l mut IndexSet<Diagnostic>, ctx: LintContext) -> Self {
@@ -366,29 +362,9 @@ impl<'ctx> Resolver<'ctx> {
             import_names: self.ctx.import_names.clone(),
             used_import_names: IndexMap::new(),
         };
-        let mut linter =
-            Linter::<CombinedLintPass>::new(&mut self.handler.diagnostics, ctx);
+        let mut linter = Linter::<CombinedLintPass>::new(&mut self.handler.diagnostics, ctx);
         linter.walk_module(module)
     }
-}
-
-#[macro_export]
-macro_rules! walk_list {
-    ($walker: expr, $method: ident, $list: expr) => {
-        for elem in &$list {
-            $walker.$method(&elem.node)
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! walk_if {
-    ($walker: expr, $method: ident, $value: expr) => {
-        match &$value {
-            Some(v) => $walker.$method(&v.node),
-            None => (),
-        }
-    };
 }
 
 impl<'ctx> MutSelfWalker<'ctx> for Linter<'_, CombinedLintPass> {
@@ -413,16 +389,15 @@ impl<'ctx> MutSelfWalker<'ctx> for Linter<'_, CombinedLintPass> {
     }
 }
 
-
-pub static Import_Position: &Lint = &Lint {
-    name: stringify!("Import_Position"),
+pub static IMPORT_POSITION: &Lint = &Lint {
+    name: stringify!("IMPORT_POSITION"),
     level: Level::Warning,
     desc: "Check for importstmt that are not defined at the top of file",
     code: "W0413",
     note: Some("Consider moving tihs statement to the top of the file"),
 };
 
-declare_lint_pass!(ImportPosition => [Import_Position]);
+declare_lint_pass!(ImportPosition => [IMPORT_POSITION]);
 
 impl LintPass for ImportPosition {
     fn check_module(
@@ -445,7 +420,6 @@ impl LintPass for ImportPosition {
         for stmt in &module.body {
             if let ast::Stmt::Import(_import_stmt) = &stmt.node {
                 if stmt.line > first_non_importstmt {
-                    let lint = ImportPosition::get_lints()[0];
                     diags.insert(Diagnostic {
                         level: Level::Warning,
                         messages: (&[Message {
@@ -458,12 +432,16 @@ impl LintPass for ImportPosition {
                             message: format!(
                                 "Importstmt should be placed at the top of the module"
                             ),
-                            note: Some(lint.note.unwrap().clone().to_string()),
+                            note: Some(
+                                ImportPosition::get_lints()[0]
+                                    .note
+                                    .unwrap()
+                                    .clone()
+                                    .to_string(),
+                            ),
                         }])
                             .to_vec(),
-                        code: Some(DiagnosticId::Warning(
-                            WarningKind::ImportstmtPositionWarning,
-                        )),
+                        code: Some(DiagnosticId::Warning(WarningKind::ImportPositionWarning)),
                     });
                 }
             }
@@ -471,15 +449,15 @@ impl LintPass for ImportPosition {
     }
 }
 
-pub static Unused_Import: &Lint = &Lint {
-    name: stringify!("Unused_Import"),
+pub static UNUSED_IMPORT: &Lint = &Lint {
+    name: stringify!("UNUSED_IMPORT"),
     level: Level::Warning,
     desc: "Check for unused importstmt",
     code: "W0411",
-    note: Some("Consider removing this importstmt"),
+    note: Some("Consider removing this statement"),
 };
 
-declare_lint_pass!(UnusedImport => [Unused_Import]);
+declare_lint_pass!(UnusedImport => [UNUSED_IMPORT]);
 
 fn record_use(name: &String, ctx: &mut LintContext) {
     let re = Regex::new(r"[|:\[\]\{\}]").unwrap();
@@ -532,7 +510,13 @@ impl LintPass for UnusedImport {
                             },
                             style: Style::Line,
                             message: format!("Module '{}' imported but unused.", import_stmt.name),
-                            note: None,
+                            note: Some(
+                                UnusedImport::get_lints()[0]
+                                    .note
+                                    .unwrap()
+                                    .clone()
+                                    .to_string(),
+                            ),
                         }])
                             .to_vec(),
                         code: Some(DiagnosticId::Warning(WarningKind::UnusedImportWarning)),
