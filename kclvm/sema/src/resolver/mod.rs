@@ -32,7 +32,6 @@ use kclvm_error::*;
 
 use crate::ty::TypeContext;
 
-use self::lint::{ImportPosition, Linter};
 use self::scope::{builtin_scope, ProgramScope};
 
 /// Resolver is responsible for program semantic checking, mainly
@@ -45,6 +44,7 @@ pub struct Resolver<'ctx> {
     pub ctx: Context,
     pub options: Options,
     pub handler: Handler,
+    pub used_import_names: IndexMap<String, IndexSet<String>>,
 }
 
 impl<'ctx> Resolver<'ctx> {
@@ -59,6 +59,7 @@ impl<'ctx> Resolver<'ctx> {
             ctx: Context::default(),
             options,
             handler: Handler::default(),
+            used_import_names: IndexMap::default(),
         }
     }
 

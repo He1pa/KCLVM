@@ -1,5 +1,6 @@
 use crate::resolver::Resolver;
 use crate::ty::TypeKind;
+use indexmap::IndexSet;
 use kclvm_error::*;
 
 use super::node::ResolvedResult;
@@ -83,6 +84,16 @@ impl<'ctx> Resolver<'ctx> {
             }
         } else {
             // Load type
+            if !pkgpath.is_empty() {
+                match self.used_import_names.get_mut(&self.ctx.filename) {
+                    Some(set) => { set.insert(pkgpath.to_string()); },
+                    None => {
+                        let mut set = IndexSet::new();
+                        set.insert(pkgpath.to_string());
+                        self.used_import_names.insert(self.ctx.filename.clone(), set);
+                    }
+                }
+            };
             let mut ty = self.resolve_var(
                 &[if !pkgpath.is_empty() {
                     pkgpath.to_string()

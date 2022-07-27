@@ -25,7 +25,7 @@
 //!
 //!    ```rust,no_run
 //!    impl LintPass for ImportPosition{
-//!        fn check_module(&mut self, diags: &mut IndexSet<Diagnostic>, ctx: &mut LintContext,module: &ast::Module){
+//!        fn check_module(&mut self, handler: &mut Handler, ctx: &mut LintContext,module: &ast::Module){
 //!            ...
 //!        }
 //!    }
@@ -64,14 +64,12 @@
 //! should be copied here so that it can continue to traverse the child nodes.
 //!
 
-use std::collections::HashSet;
-
 use super::Resolver;
 use indexmap::{IndexMap, IndexSet};
 use kclvm_ast::ast;
 use kclvm_ast::walker::MutSelfWalker;
 use kclvm_ast::{walk_if, walk_list};
-use kclvm_error::{Diagnostic, DiagnosticId, Level, Message, Position, Style, WarningKind};
+use kclvm_error::*;
 use regex::Regex;
 
 /// A summary of the methods that need to be implemented in lintpass, to be added when constructing new lint
@@ -173,8 +171,8 @@ macro_rules! lint_array {
 
 /// Provide a default implementation of the methods in lint_methods for each lintpass: null checking
 macro_rules! expand_default_lint_pass_methods {
-    ($diag:ty, $ctx:ty, [$($(#[$attr:meta])* fn $name:ident($($param:ident: $arg:ty),*);)*]) => (
-        $(#[inline(always)] fn $name(&mut self, diags: &mut $diag, ctx: &mut $ctx, $($param: $arg),*) {})*
+    ($handler:ty, $ctx:ty, [$($(#[$attr:meta])* fn $name:ident($($param:ident: $arg:ty),*);)*]) => (
+        $(#[inline(always)] fn $name(&mut self, handler: &mut $handler, ctx: &mut $ctx, $($param: $arg),*) {})*
     )
 }
 
@@ -182,7 +180,7 @@ macro_rules! expand_default_lint_pass_methods {
 macro_rules! declare_default_lint_pass_impl {
     ([], [$($methods:tt)*]) => (
         pub trait LintPass {
-            expand_default_lint_pass_methods!(IndexSet<Diagnostic>, LintContext, [$($methods)*]);
+            expand_default_lint_pass_methods!(Handler, LintContext, [$($methods)*]);
         }
     )
 }
@@ -213,9 +211,9 @@ macro_rules! impl_lint_pass {
 /// Call the `check_*` method of each lintpass in CombinedLintLass.check_*.
 ///
 /// ```rust,no_run
-///     fn check_ident(&mut self, diags: &mut IndexSet<diagnostics>, ctx: &mut LintContext, id: &ast::Identifier, ){
-///         self.LintPassA.check_ident(diags, ctx, id);
-///         self.LintPassB.check_ident(diags, ctx, id);
+///     fn check_ident(&mut self, handler: &mut Handler, ctx: &mut LintContext, id: &ast::Identifier, ){
+///         self.LintPassA.check_ident(handler, ctx, id);
+///         self.LintPassB.check_ident(handler, ctx, id);
 ///         ...
 ///     }
 /// ```
@@ -229,15 +227,15 @@ macro_rules! expand_combined_lint_pass_method {
 /// Expand all methods defined in macro `lint_methods` in the `CombinedLintLass`.
 ///
 /// ```rust,no_run
-///     fn check_ident(&mut self, diags: &mut IndexSet<diagnostics>, ctx: &mut LintContext, id: &ast::Identifier){};
-///     fn check_stmt(&mut self, diags: &mut IndexSet<diagnostics>, ctx: &mut LintContext, module: &ast::Module){};
+///     fn check_ident(&mut self, handler: &mut Handler, ctx: &mut LintContext, id: &ast::Identifier){};
+///     fn check_stmt(&mut self, handler: &mut Handler, ctx: &mut LintContext, module: &ast::Module){};
 ///     ...
 ///  ```
 #[macro_export]
 macro_rules! expand_combined_lint_pass_methods {
-    ($diags:ty, $ctx:ty, $passes:tt, [$($(#[$attr:meta])* fn $name:ident($($param:ident: $arg:ty),*);)*]) => (
-        $(fn $name(&mut self, diags: &mut $diags, ctx: &mut $ctx, $($param: $arg),*) {
-            expand_combined_lint_pass_method!($passes, self, $name, (diags, ctx, $($param),*));
+    ($handler:ty, $ctx:ty, $passes:tt, [$($(#[$attr:meta])* fn $name:ident($($param:ident: $arg:ty),*);)*]) => (
+        $(fn $name(&mut self, handler: &mut $handler, ctx: &mut $ctx, $($param: $arg),*) {
+            expand_combined_lint_pass_method!($passes, self, $name, (handler, ctx, $($param),*));
         })*
     )
 }
@@ -269,14 +267,14 @@ macro_rules! expand_combined_lint_pass_methods {
 ///  }
 ///
 /// impl LintPass for CombinedLintPass {
-///     fn check_ident(&mut self, diags: &mut IndexSet<diagnostics>, ctx: &mut LintContext, id: &ast::Identifier, ){
-///         self.LintPassA.check_ident(diags, ctx, id);
-///         self.LintPassB.check_ident(diags, ctx, id);
+///     fn check_ident(&mut self, handler: &mut Handler, ctx: &mut LintContext, id: &ast::Identifier, ){
+///         self.LintPassA.check_ident(handler, ctx, id);
+///         self.LintPassB.check_ident(handler, ctx, id);
 ///         ...
 ///     }
-///     fn check_stmt(&mut self, diags: &mut IndexSet<diagnostics>, ctx: &mut LintContext, module: &ast::Module){
-///         self.LintPassA.check_stmt(diags, ctx, stmt);
-///         self.LintPassB.check_stmt(diags, ctx, stmt);
+///     fn check_stmt(&mut self, handler: &mut Handler ctx: &mut LintContext, module: &ast::Module){
+///         self.LintPassA.check_stmt(handler, ctx, stmt);
+///         self.LintPassB.check_stmt(handler, ctx, stmt);
 ///         ...
 ///     }
 ///     ...
@@ -305,7 +303,7 @@ macro_rules! declare_combined_lint_pass {
         }
 
         impl LintPass for $name {
-            expand_combined_lint_pass_methods!(IndexSet<Diagnostic>, LintContext,[$($passes),*], $methods);
+            expand_combined_lint_pass_methods!(Handler, LintContext,[$($passes),*], $methods);
         }
     )
 }
@@ -335,7 +333,7 @@ default_lint_passes!(declare_combined_default_pass, [CombinedLintPass]);
 /// The struct `Linter` is used to traverse the AST and call the `check_*` method defined in `CombinedLintPass`.
 pub struct Linter<'l, T: LintPass> {
     pass: T,
-    diags: &'l mut IndexSet<Diagnostic>,
+    handler: &'l mut Handler,
     ctx: LintContext,
 }
 
@@ -352,10 +350,10 @@ pub struct LintContext {
 }
 
 impl<'l> Linter<'l, CombinedLintPass> {
-    pub fn new(diags: &'l mut IndexSet<Diagnostic>, ctx: LintContext) -> Self {
+    pub fn new(handler: &'l mut Handler, ctx: LintContext) -> Self {
         Linter::<'l, CombinedLintPass> {
             pass: CombinedLintPass::new(),
-            diags,
+            handler,
             ctx,
         }
     }
@@ -368,7 +366,7 @@ impl<'ctx> Resolver<'ctx> {
             import_names: self.ctx.import_names.clone(),
             used_import_names: IndexMap::new(),
         };
-        let mut linter = Linter::<CombinedLintPass>::new(&mut self.handler.diagnostics, ctx);
+        let mut linter = Linter::<CombinedLintPass>::new(&mut self.handler, ctx);
         linter.walk_module(module)
     }
 }
@@ -376,20 +374,20 @@ impl<'ctx> Resolver<'ctx> {
 impl<'ctx> MutSelfWalker<'ctx> for Linter<'_, CombinedLintPass> {
     fn walk_module(&mut self, module: &'ctx ast::Module) {
         self.pass
-            .check_module(&mut self.diags, &mut self.ctx, module);
+            .check_module(&mut self.handler, &mut self.ctx, module);
         walk_list!(self, walk_stmt, module.body);
         self.pass
-            .check_module_post(&mut self.diags, &mut self.ctx, module);
+            .check_module_post(&mut self.handler, &mut self.ctx, module);
     }
 
     fn walk_identifier(&mut self, id: &'ctx ast::Identifier) {
         self.pass
-            .check_identifier(&mut self.diags, &mut self.ctx, id);
+            .check_identifier(&mut self.handler, &mut self.ctx, id);
     }
 
     fn walk_schema_attr(&mut self, schema_attr: &'ctx ast::SchemaAttr) {
         self.pass
-            .check_schema_attr(&mut self.diags, &mut self.ctx, schema_attr);
+            .check_schema_attr(&mut self.handler, &mut self.ctx, schema_attr);
         walk_list!(self, walk_call_expr, schema_attr.decorators);
         walk_if!(self, walk_expr, schema_attr.value);
     }
@@ -406,12 +404,7 @@ pub static IMPORT_POSITION: &Lint = &Lint {
 declare_lint_pass!(ImportPosition => [IMPORT_POSITION]);
 
 impl LintPass for ImportPosition {
-    fn check_module(
-        &mut self,
-        diags: &mut IndexSet<Diagnostic>,
-        ctx: &mut LintContext,
-        module: &ast::Module,
-    ) {
+    fn check_module(&mut self, handler: &mut Handler, ctx: &mut LintContext, module: &ast::Module) {
         let mut first_non_importstmt = std::u64::MAX;
         for stmt in &module.body {
             match &stmt.node {
@@ -426,9 +419,9 @@ impl LintPass for ImportPosition {
         for stmt in &module.body {
             if let ast::Stmt::Import(_import_stmt) = &stmt.node {
                 if stmt.line > first_non_importstmt {
-                    diags.insert(Diagnostic {
-                        level: Level::Warning,
-                        messages: (&[Message {
+                    handler.add_warning(
+                        WarningKind::ImportPositionWarning,
+                        &[Message {
                             pos: Position {
                                 filename: module.filename.clone(),
                                 line: stmt.line,
@@ -445,10 +438,8 @@ impl LintPass for ImportPosition {
                                     .clone()
                                     .to_string(),
                             ),
-                        }])
-                            .to_vec(),
-                        code: Some(DiagnosticId::Warning(WarningKind::ImportPositionWarning)),
-                    });
+                        }],
+                    );
                 }
             }
         }
@@ -486,19 +477,14 @@ fn record_use(name: &String, ctx: &mut LintContext) {
 }
 
 impl LintPass for UnusedImport {
-    fn check_module(
-        &mut self,
-        diags: &mut IndexSet<Diagnostic>,
-        ctx: &mut LintContext,
-        module: &ast::Module,
-    ) {
+    fn check_module(&mut self, handler: &mut Handler, ctx: &mut LintContext, module: &ast::Module) {
         ctx.used_import_names
             .insert(ctx.filename.clone(), IndexSet::default());
     }
 
     fn check_module_post(
         &mut self,
-        diags: &mut IndexSet<Diagnostic>,
+        handler: &mut Handler,
         ctx: &mut LintContext,
         module: &ast::Module,
     ) {
@@ -506,9 +492,9 @@ impl LintPass for UnusedImport {
         for stmt in &module.body {
             if let ast::Stmt::Import(import_stmt) = &stmt.node {
                 if !used_import_names.contains(&import_stmt.name) {
-                    diags.insert(Diagnostic {
-                        level: Level::Warning,
-                        messages: (&[Message {
+                    handler.add_warning(
+                        WarningKind::UnusedImportWarning,
+                        &[Message {
                             pos: Position {
                                 filename: module.filename.clone(),
                                 line: stmt.line,
@@ -523,10 +509,8 @@ impl LintPass for UnusedImport {
                                     .clone()
                                     .to_string(),
                             ),
-                        }])
-                            .to_vec(),
-                        code: Some(DiagnosticId::Warning(WarningKind::UnusedImportWarning)),
-                    });
+                        }],
+                    );
                 }
             }
         }
@@ -534,7 +518,7 @@ impl LintPass for UnusedImport {
 
     fn check_identifier(
         &mut self,
-        diags: &mut IndexSet<Diagnostic>,
+        handler: &mut Handler,
         ctx: &mut LintContext,
         id: &ast::Identifier,
     ) {
@@ -546,7 +530,7 @@ impl LintPass for UnusedImport {
 
     fn check_schema_attr(
         &mut self,
-        diags: &mut IndexSet<Diagnostic>,
+        handler: &mut Handler,
         ctx: &mut LintContext,
         schema_attr: &ast::SchemaAttr,
     ) {
@@ -565,19 +549,14 @@ pub static REIMPORT: &Lint = &Lint {
 declare_lint_pass!(ReImport => [REIMPORT]);
 
 impl LintPass for ReImport {
-    fn check_module(
-        &mut self,
-        diags: &mut IndexSet<Diagnostic>,
-        ctx: &mut LintContext,
-        module: &ast::Module,
-    ) {
+    fn check_module(&mut self, handler: &mut Handler, ctx: &mut LintContext, module: &ast::Module) {
         let mut paths = IndexSet::<String>::new();
         for stmt in &module.body {
             if let ast::Stmt::Import(import_stmt) = &stmt.node {
                 if paths.contains(&import_stmt.path) {
-                    diags.insert(Diagnostic {
-                        level: Level::Warning,
-                        messages: (&[Message {
+                    handler.add_warning(
+                        WarningKind::ReimportWarning,
+                        &[Message {
                             pos: Position {
                                 filename: module.filename.clone(),
                                 line: stmt.line,
@@ -588,17 +567,9 @@ impl LintPass for ReImport {
                                 "Module '{}' is reimported multiple times.",
                                 &import_stmt.name
                             ),
-                            note: Some(
-                                ReImport::get_lints()[0]
-                                .note
-                                .unwrap()
-                                .clone()
-                                .to_string(),
-                            ),
-                        }])
-                            .to_vec(),
-                        code: Some(DiagnosticId::Warning(WarningKind::ReimportWarning)),
-                    });
+                            note: Some(ReImport::get_lints()[0].note.unwrap().clone().to_string()),
+                        }],
+                    );
                 } else {
                     paths.insert(import_stmt.path.clone());
                 }

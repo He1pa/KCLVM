@@ -185,8 +185,34 @@ fn test_lint() {
         }],
         code: Some(DiagnosticId::Warning(WarningKind::UnusedImportWarning)),
     });
-
+    resolver.handler.emit();
     for (d1, d2) in resolver.handler.diagnostics.iter().zip(diagnostics.iter()) {
         assert_eq!(d1, d2);
     }
+}
+
+#[test]
+fn test_aaa() {
+    let mut program = load_program(&["./src/resolver/test_data/import.k"], None).unwrap();
+    pre_process_program(&mut program);
+    let mut resolver = Resolver::new(
+        &program,
+        Options {
+            raise_err: true,
+            config_auto_fix: false,
+            lint_check: false,
+        },
+    );
+    resolver.resolve_import();
+    resolver.check(kclvm_ast::MAIN_PKG);
+    println!("{:?}", resolver.used_import_names);
+    // let m = &program.pkgs.get("__main__").unwrap()[0];
+    // for stmt in &m.body {
+    //     if let ast::Stmt::Schema(schema_stmt) = &stmt.node {
+    //         println!("{:?}", )
+    //     }
+    // }
+
+    // let s = &m.body[0].node;
+    // println!("{:?}", s)
 }
