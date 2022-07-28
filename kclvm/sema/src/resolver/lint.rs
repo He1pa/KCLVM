@@ -64,13 +64,14 @@
 //! should be copied here so that it can continue to traverse the child nodes.
 //!
 
+use super::scope::ScopeObjectKind;
 use super::Resolver;
+use crate::resolver::scope::Scope;
 use indexmap::{IndexMap, IndexSet};
 use kclvm_ast::ast;
 use kclvm_ast::walker::MutSelfWalker;
 use kclvm_ast::{walk_if, walk_list};
 use kclvm_error::*;
-use regex::Regex;
 
 /// A summary of the methods that need to be implemented in lintpass, to be added when constructing new lint
 /// lint and lintpass. When defining lintpass, the default implementation of these methods is provided: null
@@ -343,10 +344,11 @@ pub struct Linter<'l, T: LintPass> {
 pub struct LintContext {
     /// What source file are we in.
     pub filename: String,
-    /// Import pkgpath and name, which copied from resolver.ctx and de-duplicated
-    pub import_names: IndexMap<String, IndexMap<String, String>>,
-    /// Used import names
-    pub used_import_names: IndexMap<String, IndexSet<String>>,
+    /// Resolver scope
+    pub scope: Scope,
+    /// All register lint
+    pub lintstore: LintArray
+
 }
 
 impl<'l> Linter<'l, CombinedLintPass> {
@@ -363,8 +365,8 @@ impl<'ctx> Resolver<'ctx> {
     pub fn lint_check_module(&mut self, module: &ast::Module) {
         let ctx = LintContext {
             filename: self.ctx.filename.clone(),
-            import_names: self.ctx.import_names.clone(),
-            used_import_names: IndexMap::new(),
+            scope: self.scope.borrow().clone(),
+            lintstore: CombinedLintPass::get_lints(),
         };
         let mut linter = Linter::<CombinedLintPass>::new(&mut self.handler, ctx);
         linter.walk_module(module)
@@ -431,13 +433,7 @@ impl LintPass for ImportPosition {
                             message: format!(
                                 "Importstmt should be placed at the top of the module"
                             ),
-                            note: Some(
-                                ImportPosition::get_lints()[0]
-                                    .note
-                                    .unwrap()
-                                    .clone()
-                                    .to_string(),
-                            ),
+                            note: Some("Consider moving tihs statement to the top of the file".to_string()),
                         }],
                     );
                 }
@@ -456,85 +452,29 @@ pub static UNUSED_IMPORT: &Lint = &Lint {
 
 declare_lint_pass!(UnusedImport => [UNUSED_IMPORT]);
 
-fn record_use(name: &String, ctx: &mut LintContext) {
-    let re = Regex::new(r"[|:\[\]\{\}]").unwrap();
-    // # SchemaAttr.types, A|B, [A|B], {A|B:C}
-    let types: Vec<&str> = re.split(name).collect();
-    for t in types {
-        let t = t.to_string();
-        // name: a.b.c
-        let name: Vec<&str> = t.split(".").collect();
-        let firstname = name[0];
-        if let Some(import_names) = ctx.import_names.get(&ctx.filename) {
-            if import_names.contains_key(firstname) {
-                ctx.used_import_names
-                    .get_mut(&ctx.filename)
-                    .unwrap()
-                    .insert(firstname.to_string());
-            }
-        }
-    }
-}
-
 impl LintPass for UnusedImport {
     fn check_module(&mut self, handler: &mut Handler, ctx: &mut LintContext, module: &ast::Module) {
-        ctx.used_import_names
-            .insert(ctx.filename.clone(), IndexSet::default());
-    }
+        let scope = &ctx.scope.elems;
+        for (_, scope_obj) in scope {
+            let scope_obj = scope_obj.borrow();
+            if scope_obj.kind == ScopeObjectKind::Module && scope_obj.used == false {
+                println!("{:?}", scope_obj.start);
+                handler.add_warning(
+                    WarningKind::UnusedImportWarning,
+                    &[Message {
+                        pos: Position {
+                            filename: scope_obj.start.filename.clone(),
+                            line: scope_obj.start.line,
+                            column: None,
+                        },
+                        style: Style::Line,
+                        message: format!("Module '{}' imported but unused.", scope_obj.name),
+                        note: Some("Consider removing this statement".to_string()),
+                    }],
+                );
 
-    fn check_module_post(
-        &mut self,
-        handler: &mut Handler,
-        ctx: &mut LintContext,
-        module: &ast::Module,
-    ) {
-        let used_import_names = ctx.used_import_names.get(&ctx.filename).unwrap();
-        for stmt in &module.body {
-            if let ast::Stmt::Import(import_stmt) = &stmt.node {
-                if !used_import_names.contains(&import_stmt.name) {
-                    handler.add_warning(
-                        WarningKind::UnusedImportWarning,
-                        &[Message {
-                            pos: Position {
-                                filename: module.filename.clone(),
-                                line: stmt.line,
-                                column: None,
-                            },
-                            style: Style::Line,
-                            message: format!("Module '{}' imported but unused.", import_stmt.name),
-                            note: Some(
-                                UnusedImport::get_lints()[0]
-                                    .note
-                                    .unwrap()
-                                    .clone()
-                                    .to_string(),
-                            ),
-                        }],
-                    );
-                }
             }
         }
-    }
-
-    fn check_identifier(
-        &mut self,
-        handler: &mut Handler,
-        ctx: &mut LintContext,
-        id: &ast::Identifier,
-    ) {
-        if id.names.len() >= 2 {
-            let id_firstname = &id.names[0];
-            record_use(&id_firstname, ctx);
-        }
-    }
-
-    fn check_schema_attr(
-        &mut self,
-        handler: &mut Handler,
-        ctx: &mut LintContext,
-        schema_attr: &ast::SchemaAttr,
-    ) {
-        record_use(&schema_attr.type_str.node, ctx);
     }
 }
 
@@ -567,7 +507,7 @@ impl LintPass for ReImport {
                                 "Module '{}' is reimported multiple times.",
                                 &import_stmt.name
                             ),
-                            note: Some(ReImport::get_lints()[0].note.unwrap().clone().to_string()),
+                            note: Some("Consider removing this statement".to_string()),
                         }],
                     );
                 } else {

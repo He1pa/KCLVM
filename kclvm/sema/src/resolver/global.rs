@@ -92,6 +92,7 @@ impl<'ctx> Resolver<'ctx> {
                                 end,
                                 ty: Rc::new(Type::schema(schema_ty)),
                                 kind: ScopeObjectKind::Definition,
+                                used: false,
                             },
                         )
                     }
@@ -135,6 +136,7 @@ impl<'ctx> Resolver<'ctx> {
                                     end,
                                     ty: Rc::new(Type::schema(schema_ty)),
                                     kind: ScopeObjectKind::Definition,
+                                    used: false,
                                 },
                             )
                         }
@@ -154,6 +156,7 @@ impl<'ctx> Resolver<'ctx> {
             Some(modules) => {
                 // 1. Scan all schema and rule type symbol
                 for module in modules {
+                    self.ctx.filename = module.filename.to_string();
                     for stmt in &module.body {
                         if matches!(stmt.node, ast::Stmt::TypeAlias(_)) {
                             self.stmt(stmt);
@@ -280,6 +283,7 @@ impl<'ctx> Resolver<'ctx> {
                     end,
                     ty,
                     kind: ScopeObjectKind::Variable,
+                    used: false,
                 },
             );
         }
@@ -333,6 +337,7 @@ impl<'ctx> Resolver<'ctx> {
                 end,
                 ty,
                 kind: ScopeObjectKind::Variable,
+                used: false,
             },
         );
     }

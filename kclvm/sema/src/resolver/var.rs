@@ -49,6 +49,7 @@ impl<'ctx> Resolver<'ctx> {
                                 end: pos.clone(),
                                 ty: self.any_ty(),
                                 kind: ScopeObjectKind::Variable,
+                                used: false,
                             },
                         );
                         if ty.is_none() {
@@ -75,6 +76,7 @@ impl<'ctx> Resolver<'ctx> {
                                 end: pos.clone(),
                                 ty: self.any_ty(),
                                 kind: ScopeObjectKind::Variable,
+                                used: false,
                             },
                         );
                         return self.any_ty();
@@ -83,6 +85,11 @@ impl<'ctx> Resolver<'ctx> {
                 }
             }
         } else {
+            if !pkgpath.is_empty() {
+                if let Some(module_scope) = self.scope.borrow_mut().elems.get_mut(pkgpath) {
+                    module_scope.borrow_mut().used = true;
+                }
+            }
             // Load type
             if !pkgpath.is_empty() {
                 match self.used_import_names.get_mut(&self.ctx.filename) {
