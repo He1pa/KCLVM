@@ -206,6 +206,13 @@ fn test_aaa() {
     resolver.resolve_import();
     resolver.check(kclvm_ast::MAIN_PKG);
     println!("{:?}", resolver.used_import_names);
+    println!("{:?}", resolver.scope.borrow().elems.keys());
+    for v in resolver.scope.borrow().elems.values(){
+        if v.borrow().kind == ScopeObjectKind::Module{
+            println!("{:?}", v.borrow().name);
+        }
+    }
+
     // let m = &program.pkgs.get("__main__").unwrap()[0];
     // for stmt in &m.body {
     //     if let ast::Stmt::Schema(schema_stmt) = &stmt.node {
