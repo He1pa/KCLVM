@@ -185,7 +185,7 @@ def kclvm_cli_native_run_dylib(args: pb2.ExecProgram_Args) -> objpkg.KCLResult:
         config_meta_file_msg = kcl_error.ErrFileMsg(
             filename=panic_info.get("kcl_config_meta_file"),
             line_no=panic_info.get("kcl_config_meta_line"),
-            col_no=panic_info.get("kcl_config_meta_col"),
+            col_no=111,
             arg_msg=panic_info.get("kcl_config_meta_arg_msg"),
         )
         if config_meta_file_msg.arg_msg:
@@ -193,7 +193,7 @@ def kclvm_cli_native_run_dylib(args: pb2.ExecProgram_Args) -> objpkg.KCLResult:
 
         if panic_info.get("is_warning") or panic_info.get("is_warnning"):
             kcl_error.report_warning(
-                err_type=err_type, file_msgs=[], arg_msg=panic_info.get("message")
+                err_type=err_type, file_msgs=file_msg, arg_msg=panic_info.get("message")
             )
         else:
             kcl_error.report_exception(

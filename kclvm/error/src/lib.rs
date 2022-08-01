@@ -135,6 +135,48 @@ impl Handler {
         }
     }
 
+        /// Emit all diagnostics but do not abort.
+    #[inline]
+    pub fn alert_if_any_diags(&mut self) {
+        if self.diagnostics.len() > 0 {
+            for diag in &self.diagnostics {
+                if diag.level == Level::Error {
+                    let pos = diag.messages[0].pos.clone();
+                    let message = diag.messages[0].message.clone();
+    
+                    let mut panic_info = PanicInfo::default();
+    
+                    panic_info.__kcl_PanicInfo__ = true;
+                    panic_info.message = message;
+                    panic_info.err_type_code = ErrType::CompileError_TYPE as i32;
+    
+                    panic_info.kcl_file = pos.filename.clone();
+                    panic_info.kcl_line = pos.line as i32;
+                    panic_info.kcl_col = pos.column.unwrap_or(0) as i32;
+    
+                    panic!("{}", panic_info.to_json_string());
+                } else if diag.level == Level::Warning {
+                    let pos = diag.messages[0].pos.clone();
+                    let message = diag.messages[0].message.clone();
+    
+                    let mut panic_info = PanicInfo::default();
+    
+                    panic_info.__kcl_PanicInfo__ = true;
+                    panic_info.is_warning = true;
+                    panic_info.message = message;
+                    panic_info.err_type_code = ErrType::CompileError_TYPE as i32;
+    
+                    panic_info.kcl_file = pos.filename.clone();
+                    panic_info.kcl_line = pos.line as i32;
+                    panic_info.kcl_col = pos.column.unwrap_or(0) as i32;
+    
+                    panic!("{}", panic_info.to_json_string());
+                }
+
+            }
+        }
+    }
+
     /// Construct a parse error and put it into the handler diagnostic buffer
     pub fn add_syntex_error(&mut self, msg: &str, pos: Position) -> &mut Self {
         let message = format!("Invalid syntax: {}", msg);

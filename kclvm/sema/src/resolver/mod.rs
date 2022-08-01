@@ -136,7 +136,7 @@ pub fn resolve_program(program: &mut Program) -> ProgramScope {
         Options {
             raise_err: true,
             config_auto_fix: false,
-            lint_check: false,
+            lint_check: true,
         },
     );
     resolver.resolve_import();
