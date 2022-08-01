@@ -67,7 +67,7 @@
 use super::scope::ScopeObjectKind;
 use super::Resolver;
 use crate::resolver::scope::Scope;
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexSet;
 use kclvm_ast::ast;
 use kclvm_ast::walker::MutSelfWalker;
 use kclvm_ast::{walk_if, walk_list};
