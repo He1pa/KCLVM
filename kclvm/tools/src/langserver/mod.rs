@@ -4,9 +4,9 @@ use crate::util;
 use anyhow::Result;
 use kclvm_error::Position;
 
-mod find_refs;
-mod go_to_def;
-mod word_map;
+pub mod find_refs;
+pub mod go_to_def;
+pub mod word_map;
 
 #[cfg(test)]
 mod tests;
