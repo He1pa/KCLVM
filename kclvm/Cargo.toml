@@ -70,5 +70,5 @@ members = [
     "tools",
     "version",
     "query",
-    "utils"
+    "tools/src/kcl-language-server"
 ]

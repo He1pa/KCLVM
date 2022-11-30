@@ -4,6 +4,8 @@ use kclvm_error::Position;
 
 #[cfg(test)]
 mod tests {
+    use crate::langserver::go_to_def::go_to_def_test;
+
     use super::*;
     use std::fs;
     use std::path::Path;
@@ -250,5 +252,15 @@ mod tests {
             column: Some(7),
         }];
         assert_eq!(mp.get(&String::from("Son")), Some(except));
+    }
+
+    #[test]
+    fn test_word_map_aa() {
+        let path = "/Users/zz/code/KCL-Models/fib.k";
+        go_to_def_test(path,             Position {
+            filename: String::from("/Users/zz/code/KCL-Models/fib.k"),
+            line: 14,
+            column: Some(9),
+        });
     }
 }
