@@ -4,7 +4,7 @@ use kclvm_error::Position;
 
 #[cfg(test)]
 mod tests {
-    use crate::langserver::go_to_def::go_to_def_test;
+    use crate::langserver::go_to_def::{go_to_def_test, inner_most_test};
 
     use super::*;
     use std::fs;
@@ -257,10 +257,21 @@ mod tests {
     #[test]
     fn test_word_map_aa() {
         let path = "/Users/zz/code/KCL-Models/fib.k";
-        go_to_def_test(path,             Position {
-            filename: String::from("/Users/zz/code/KCL-Models/fib.k"),
-            line: 14,
-            column: Some(9),
-        });
+        println!("{:?}", go_to_def_test(path,             Position {
+                    filename: String::from("/Users/zz/code/KCL-Models/fib.k"),
+                    line: 28,
+                    column: Some(6),
+                }));
+    }
+
+    #[test]
+    fn test_word_map_aaaaa() {
+        let path = "/Users/zz/code/KCL-Models/fib.k";
+
+        println!("{:?}", inner_most_test(Position {
+                    filename: String::from("/Users/zz/code/KCL-Models/fib.k"),
+                    line: 28,
+                    column: Some(6),
+                }));
     }
 }

@@ -273,15 +273,39 @@ impl LanguageServer for Backend {
             let name = word_at_pos(pos.clone());
             let mut obj_s: Option<ScopeObject> = None;
             if name.is_some() {
+                // let name = name.unwrap();
+                // for s in scope.scope_map.values() {
+                //     let s = s.borrow_mut();
+                //     match s.lookup(&name) {
+                //         Some(obj) => {
+                //             obj_s = Some(obj.borrow().clone());
+                //             break;
+                //         }
+                //         None => continue,
+                //     }
+                // }
                 let name = name.unwrap();
-                for s in scope.scope_map.values() {
+
+                let mut scopes = vec![];
+        
+                for s in scope.scope_map.values(){
+                    scopes.push(s.clone());
+                }
+            
+                while !scopes.is_empty(){
+                    let s = scopes.pop().unwrap().clone();
                     let s = s.borrow_mut();
-                    match s.lookup(&name) {
+                    // let s = scopes.pop().unwrap().borrow_mut();
+                    match &s.lookup(&name) {
                         Some(obj) => {
                             obj_s = Some(obj.borrow().clone());
                             break;
-                        }
-                        None => continue,
+                        },
+                        None => {
+                            for c in &s.children{
+                                scopes.push(c.clone());
+                            }
+                        },
                     }
                 }
             };
