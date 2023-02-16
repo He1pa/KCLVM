@@ -1,6 +1,3 @@
-use std::collections::{HashMap, HashSet};
-use std::default;
-
 use chumsky::chain::Chain;
 use dashmap::DashMap;
 use kclvm_sema::resolver::scope::ScopeObject;
@@ -8,6 +5,8 @@ use kclvm_tools::langserver::word_at_pos;
 use kclvm_tools::lint::lint_files;
 use ropey::Rope;
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::default;
 // use serde_json::Value;
 use indexmap::IndexSet;
 use kclvm_parser::{load_program, LoadProgramOptions};
@@ -17,6 +16,8 @@ use tower_lsp::jsonrpc::{ErrorCode, Result};
 use tower_lsp::lsp_types::notification::Notification;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
+
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use kclvm_error::Diagnostic as KCLDiagnostic;
 
@@ -32,8 +33,8 @@ struct Backend {
 
 struct TextDocumentItem {
     uri: Url,
-    text: String,
-    version: i32,
+    // text: String,
+    // version: i32,
 }
 
 #[tower_lsp::async_trait]
@@ -414,8 +415,8 @@ impl LanguageServer for Backend {
             .await;
         self.on_change(TextDocumentItem {
             uri: params.text_document.uri,
-            text: params.text_document.text,
-            version: params.text_document.version,
+            // text: params.text_document.text,
+            // version: params.text_document.version,
         })
         .await
     }
@@ -423,13 +424,20 @@ impl LanguageServer for Backend {
     async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
         self.on_change(TextDocumentItem {
             uri: params.text_document.uri,
-            text: std::mem::take(&mut params.content_changes[0].text),
-            version: params.text_document.version,
+            // text: std::mem::take(&mut params.content_changes[0].text),
+            // version: params.text_document.version,
         })
         .await
     }
 
-    async fn did_save(&self, _: DidSaveTextDocumentParams) {
+    async fn did_save(&self, mut params: DidSaveTextDocumentParams) {
+        self.on_change(TextDocumentItem {
+            uri: params.text_document.uri,
+            // text: std::mem::take(&mut params.content_changes[0].text),
+            // version: params.text_document.version,
+        })
+        .await;
+
         self.client
             .log_message(MessageType::INFO, "file saved!")
             .await;
@@ -574,14 +582,49 @@ impl Backend {
         let file_name = uri.path();
         // let mut program = load_program(&[file_name], None).unwrap();
         // let scope = resolve_program(&mut program);
+        self.client
+            .log_message(MessageType::INFO, "on change")
+            .await;
 
-        let (errors, warnings) = lint_files(&[file_name], None);
+        self.client
+            .log_message(
+                MessageType::INFO,
+                format!(
+                    "start lint: {} ",
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs_f32()
+                ),
+            )
+            .await;
+            
+        // let mut program = load_program(&[file_name], None).unwrap();
+        // let scope = resolve_program(&mut program);
+
+        // let (errors, warnings) = lint_files(&[file_name], None);
+        let (errors, warnings) = match lint_files(&[file_name], None){
+            Ok((e, w)) => (e, w),
+            Err(_) => (IndexSet::default(), IndexSet::default()),
+        };
         // self.document_map
         //     .insert(params.uri.to_string(), rope.clone());
         // let (ast, errors, semantic_tokens) = parse(&params.text);
-        // self.client
-        //     .log_message(MessageType::INFO, format!("{:?}", errors))
-        //     .await;
+        self.client
+            .log_message(MessageType::INFO, format!("{:?}", errors))
+            .await;
+        self.client
+            .log_message(
+                MessageType::INFO,
+                format!(
+                    "end lint: {} ",
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs_f32()
+                ),
+            )
+            .await;
         let mut diags: IndexSet<KCLDiagnostic> = IndexSet::default();
         for err in errors {
             diags.insert(err);
@@ -664,7 +707,19 @@ impl Backend {
             .collect::<Vec<_>>();
 
         self.client
-            .publish_diagnostics(params.uri.clone(), diagnostics, Some(params.version))
+            .publish_diagnostics(params.uri.clone(), diagnostics, None)
+            .await;
+        self.client
+            .log_message(
+                MessageType::INFO,
+                format!(
+                    "response: {} ",
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs_f32()
+                ),
+            )
             .await;
 
         // if let Some(ast) = ast {
