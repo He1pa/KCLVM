@@ -925,6 +925,7 @@ dependencies = [
  "dashmap",
  "env_logger",
  "im-rc",
+ "indexmap",
  "kclvm-ast",
  "kclvm-compiler",
  "kclvm-error",

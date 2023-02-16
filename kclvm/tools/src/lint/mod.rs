@@ -1,5 +1,8 @@
+use std::error::Error;
+
 use indexmap::IndexSet;
 use kclvm_error::{diagnostic::classification, Diagnostic, Handler};
+use kclvm_error::{Diagnostic, Level};
 use kclvm_parser::{load_program, LoadProgramOptions};
 use kclvm_runtime::PanicInfo;
 use kclvm_sema::resolver::resolve_program;
