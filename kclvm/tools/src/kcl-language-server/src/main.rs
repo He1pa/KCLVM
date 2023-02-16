@@ -1,12 +1,15 @@
 use std::collections::{HashMap, HashSet};
 use std::default;
 
+use chumsky::chain::Chain;
 use dashmap::DashMap;
 use kclvm_sema::resolver::scope::ScopeObject;
 use kclvm_tools::langserver::word_at_pos;
+use kclvm_tools::lint::lint_files;
 use ropey::Rope;
 use serde::{Deserialize, Serialize};
 // use serde_json::Value;
+use indexmap::IndexSet;
 use kclvm_parser::{load_program, LoadProgramOptions};
 use kclvm_sema::resolver::resolve_program;
 use kclvm_tools::langserver::find_refs::find_refs;
@@ -14,6 +17,8 @@ use tower_lsp::jsonrpc::{ErrorCode, Result};
 use tower_lsp::lsp_types::notification::Notification;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
+
+use kclvm_error::Diagnostic as KCLDiagnostic;
 
 use kclvm_error::Position as KCLPOS;
 
@@ -25,15 +30,21 @@ struct Backend {
     // semantic_token_map: DashMap<String, Vec<ImCompleteSemanticToken>>,
 }
 
+struct TextDocumentItem {
+    uri: Url,
+    text: String,
+    version: i32,
+}
+
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
         Ok(InitializeResult {
             server_info: None,
             capabilities: ServerCapabilities {
-                // text_document_sync: Some(TextDocumentSyncCapability::Kind(
-                //     TextDocumentSyncKind::FULL,
-                // )),
+                text_document_sync: Some(TextDocumentSyncCapability::Kind(
+                    TextDocumentSyncKind::FULL,
+                )),
 
                 // completion_provider: Some(CompletionOptions {
                 //     resolve_provider: Some(false),
@@ -193,67 +204,73 @@ impl LanguageServer for Backend {
     }
 
     // async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
-        // let uri = params.text_document_position.text_document.uri;
-        // let mut pos_arg = vec![];
-        // pos_arg.push(Location::new(
-        //     uri.clone(),
-        //     Range::new(
-        //         Position::new(0 as u32, 0 as u32),
-        //         Position::new(0 as u32, 1 as u32),
-        //     ),
-        // ));
+    // let uri = params.text_document_position.text_document.uri;
+    // let mut pos_arg = vec![];
+    // pos_arg.push(Location::new(
+    //     uri.clone(),
+    //     Range::new(
+    //         Position::new(0 as u32, 0 as u32),
+    //         Position::new(0 as u32, 1 as u32),
+    //     ),
+    // ));
 
-        // pos_arg.push(Location::new(
-        //     uri,
-        //     Range::new(
-        //         Position::new(1 as u32, 0 as u32),
-        //         Position::new(1 as u32, 1 as u32),
-        //     ),
-        // ));
+    // pos_arg.push(Location::new(
+    //     uri,
+    //     Range::new(
+    //         Position::new(1 as u32, 0 as u32),
+    //         Position::new(1 as u32, 1 as u32),
+    //     ),
+    // ));
 
-        // let reference_list = Some(pos_arg);
-        // let reference_list = || -> Option<Vec<Location>> {
-        //     let uri = params.text_document_position.text_document.uri;
-        //     let ast = self.ast_map.get(&uri.to_string())?;
-        //     let rope = self.document_map.get(&uri.to_string())?;
+    // let reference_list = Some(pos_arg);
+    // let reference_list = || -> Option<Vec<Location>> {
+    //     let uri = params.text_document_position.text_document.uri;
+    //     let ast = self.ast_map.get(&uri.to_string())?;
+    //     let rope = self.document_map.get(&uri.to_string())?;
 
-        //     let position = params.text_document_position.position;
-        //     let char = rope.try_line_to_char(position.line as usize).ok()?;
-        //     let offset = char + position.character as usize;
-        //     let reference_list = get_reference(&ast, offset, false);
-        //     let ret = reference_list
-        //         .into_iter()
-        //         .filter_map(|(_, range)| {
-        //             let start_position = offset_to_position(range.start, &rope)?;
-        //             let end_position = offset_to_position(range.end, &rope)?;
+    //     let position = params.text_document_position.position;
+    //     let char = rope.try_line_to_char(position.line as usize).ok()?;
+    //     let offset = char + position.character as usize;
+    //     let reference_list = get_reference(&ast, offset, false);
+    //     let ret = reference_list
+    //         .into_iter()
+    //         .filter_map(|(_, range)| {
+    //             let start_position = offset_to_position(range.start, &rope)?;
+    //             let end_position = offset_to_position(range.end, &rope)?;
 
-        //             let range = Range::new(start_position, end_position);
+    //             let range = Range::new(start_position, end_position);
 
-        //             Some(Location::new(uri.clone(), range))
-        //         })
-        //         .collect::<Vec<_>>();
-        //     Some(ret)
-        // }();
-        // Ok(reference_list)
+    //             Some(Location::new(uri.clone(), range))
+    //         })
+    //         .collect::<Vec<_>>();
+    //     Some(ret)
+    // }();
+    // Ok(reference_list)
     // }
 
     async fn goto_definition(
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
-        let uri = params.clone().text_document_position_params.text_document.uri;
+        let uri = params
+            .clone()
+            .text_document_position_params
+            .text_document
+            .uri;
         let position = params.clone().text_document_position_params.position;
-
 
         let file_name = uri.path();
 
         self.client
-        .log_message(MessageType::INFO, format!("filename: {}", file_name))
-        .await;
+            .log_message(MessageType::INFO, format!("filename: {}", file_name))
+            .await;
 
         self.client
-        .log_message(MessageType::INFO, format!("pos: {} {}", position.line, position.character))
-        .await;
+            .log_message(
+                MessageType::INFO,
+                format!("pos: {} {}", position.line, position.character),
+            )
+            .await;
 
         let definition = || -> Option<GotoDefinitionResponse> {
             let uri = params.text_document_position_params.text_document.uri;
@@ -287,12 +304,12 @@ impl LanguageServer for Backend {
                 let name = name.unwrap();
 
                 let mut scopes = vec![];
-        
-                for s in scope.scope_map.values(){
+
+                for s in scope.scope_map.values() {
                     scopes.push(s.clone());
                 }
-            
-                while !scopes.is_empty(){
+
+                while !scopes.is_empty() {
                     let s = scopes.pop().unwrap().clone();
                     let s = s.borrow_mut();
                     // let s = scopes.pop().unwrap().borrow_mut();
@@ -300,12 +317,12 @@ impl LanguageServer for Backend {
                         Some(obj) => {
                             obj_s = Some(obj.borrow().clone());
                             break;
-                        },
+                        }
                         None => {
-                            for c in &s.children{
+                            for c in &s.children {
                                 scopes.push(c.clone());
                             }
-                        },
+                        }
                     }
                 }
             };
@@ -315,10 +332,8 @@ impl LanguageServer for Backend {
                         obj.start.line as u32 - 1,
                         obj.start.column.unwrap_or(0) as u32,
                     );
-                    let end_position = Position::new(
-                        obj.end.line as u32 - 1,
-                        obj.end.column.unwrap_or(0) as u32,
-                    );
+                    let end_position =
+                        Position::new(obj.end.line as u32 - 1, obj.end.column.unwrap_or(0) as u32);
                     let range = Range::new(start_position, end_position);
                     Some(GotoDefinitionResponse::Scalar(Location::new(uri, range)))
                 }
@@ -393,38 +408,38 @@ impl LanguageServer for Backend {
     //     Ok(None)
     // }
 
-    // async fn did_open(&self, params: DidOpenTextDocumentParams) {
-    //     self.client
-    //         .log_message(MessageType::INFO, "file opened!")
-    //         .await;
-    //     self.on_change(TextDocumentItem {
-    //         uri: params.text_document.uri,
-    //         text: params.text_document.text,
-    //         version: params.text_document.version,
-    //     })
-    //     .await
-    // }
+    async fn did_open(&self, params: DidOpenTextDocumentParams) {
+        self.client
+            .log_message(MessageType::INFO, "file opened!")
+            .await;
+        self.on_change(TextDocumentItem {
+            uri: params.text_document.uri,
+            text: params.text_document.text,
+            version: params.text_document.version,
+        })
+        .await
+    }
 
-    // async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
-    //     self.on_change(TextDocumentItem {
-    //         uri: params.text_document.uri,
-    //         text: std::mem::take(&mut params.content_changes[0].text),
-    //         version: params.text_document.version,
-    //     })
-    //     .await
-    // }
+    async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
+        self.on_change(TextDocumentItem {
+            uri: params.text_document.uri,
+            text: std::mem::take(&mut params.content_changes[0].text),
+            version: params.text_document.version,
+        })
+        .await
+    }
 
-    // async fn did_save(&self, _: DidSaveTextDocumentParams) {
-    //     self.client
-    //         .log_message(MessageType::INFO, "file saved!")
-    //         .await;
-    // }
+    async fn did_save(&self, _: DidSaveTextDocumentParams) {
+        self.client
+            .log_message(MessageType::INFO, "file saved!")
+            .await;
+    }
 
-    // async fn did_close(&self, _: DidCloseTextDocumentParams) {
-    //     self.client
-    //         .log_message(MessageType::INFO, "file closed!")
-    //         .await;
-    // }
+    async fn did_close(&self, _: DidCloseTextDocumentParams) {
+        self.client
+            .log_message(MessageType::INFO, "file closed!")
+            .await;
+    }
 
     // async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
     //     let workspace_edit = || -> Option<WorkspaceEdit> {
@@ -524,106 +539,144 @@ impl LanguageServer for Backend {
 //     text: String,
 //     version: i32,
 // }
-// impl Backend {
-//     async fn inlay_hint(&self, params: InlayHintParams) -> Result<Vec<(usize, usize, String)>> {
-//         let mut hashmap = HashMap::new();
-//         if let Some(ast) = self.ast_map.get(&params.path) {
-//             ast.iter().for_each(|(_, v)| {
-//                 type_inference(&v.body, &mut hashmap);
-//             });
-//         }
+impl Backend {
+    // async fn inlay_hint(&self, params: InlayHintParams) -> Result<Vec<(usize, usize, String)>> {
+    //     let mut hashmap = HashMap::new();
+    //     if let Some(ast) = self.ast_map.get(&params.path) {
+    //         ast.iter().for_each(|(_, v)| {
+    //             type_inference(&v.body, &mut hashmap);
+    //         });
+    //     }
 
-//         let inlay_hint_list = hashmap
-//             .into_iter()
-//             .map(|(k, v)| {
-//                 (
-//                     k.start,
-//                     k.end,
-//                     match v {
-//                         kcl_language_server::chumsky::Value::Null => "null".to_string(),
-//                         kcl_language_server::chumsky::Value::Bool(_) => "bool".to_string(),
-//                         kcl_language_server::chumsky::Value::Num(_) => "number".to_string(),
-//                         kcl_language_server::chumsky::Value::Str(_) => "string".to_string(),
-//                         kcl_language_server::chumsky::Value::List(_) => "[]".to_string(),
-//                         kcl_language_server::chumsky::Value::Func(_) => v.to_string(),
-//                     },
-//                 )
-//             })
-//             .collect::<Vec<_>>();
-//         Ok(inlay_hint_list)
-//     }
-//     async fn on_change(&self, params: TextDocumentItem) {
-//         let rope = ropey::Rope::from_str(&params.text);
-//         self.document_map
-//             .insert(params.uri.to_string(), rope.clone());
-//         let (ast, errors, semantic_tokens) = parse(&params.text);
-//         self.client
-//             .log_message(MessageType::INFO, format!("{:?}", errors))
-//             .await;
-//         let diagnostics = errors
-//             .into_iter()
-//             .filter_map(|item| {
-//                 let (message, span) = match item.reason() {
-//                     chumsky::error::SimpleReason::Unclosed { span, delimiter } => {
-//                         (format!("Unclosed delimiter {}", delimiter), span.clone())
-//                     }
-//                     chumsky::error::SimpleReason::Unexpected => (
-//                         format!(
-//                             "{}, expected {}",
-//                             if item.found().is_some() {
-//                                 "Unexpected token in input"
-//                             } else {
-//                                 "Unexpected end of input"
-//                             },
-//                             if item.expected().len() == 0 {
-//                                 "something else".to_string()
-//                             } else {
-//                                 item.expected()
-//                                     .map(|expected| match expected {
-//                                         Some(expected) => expected.to_string(),
-//                                         None => "end of input".to_string(),
-//                                     })
-//                                     .collect::<Vec<_>>()
-//                                     .join(", ")
-//                             }
-//                         ),
-//                         item.span(),
-//                     ),
-//                     chumsky::error::SimpleReason::Custom(msg) => (msg.to_string(), item.span()),
-//                 };
+    //     let inlay_hint_list = hashmap
+    //         .into_iter()
+    //         .map(|(k, v)| {
+    //             (
+    //                 k.start,
+    //                 k.end,
+    //                 match v {
+    //                     kcl_language_server::chumsky::Value::Null => "null".to_string(),
+    //                     kcl_language_server::chumsky::Value::Bool(_) => "bool".to_string(),
+    //                     kcl_language_server::chumsky::Value::Num(_) => "number".to_string(),
+    //                     kcl_language_server::chumsky::Value::Str(_) => "string".to_string(),
+    //                     kcl_language_server::chumsky::Value::List(_) => "[]".to_string(),
+    //                     kcl_language_server::chumsky::Value::Func(_) => v.to_string(),
+    //                 },
+    //             )
+    //         })
+    //         .collect::<Vec<_>>();
+    //     Ok(inlay_hint_list)
+    // }
 
-//                 let diagnostic = || -> Option<Diagnostic> {
-//                     // let start_line = rope.try_char_to_line(span.start)?;
-//                     // let first_char = rope.try_line_to_char(start_line)?;
-//                     // let start_column = span.start - first_char;
-//                     let start_position = offset_to_position(span.start, &rope)?;
-//                     let end_position = offset_to_position(span.end, &rope)?;
-//                     // let end_line = rope.try_char_to_line(span.end)?;
-//                     // let first_char = rope.try_line_to_char(end_line)?;
-//                     // let end_column = span.end - first_char;
-//                     Some(Diagnostic::new_simple(
-//                         Range::new(start_position, end_position),
-//                         message,
-//                     ))
-//                 }();
-//                 diagnostic
-//             })
-//             .collect::<Vec<_>>();
+    async fn on_change(&self, params: TextDocumentItem) {
+        // let rope = ropey::Rope::from_str(&params.text);
+        let uri = params.uri.clone();
+        let file_name = uri.path();
+        // let mut program = load_program(&[file_name], None).unwrap();
+        // let scope = resolve_program(&mut program);
 
-//         self.client
-//             .publish_diagnostics(params.uri.clone(), diagnostics, Some(params.version))
-//             .await;
+        let (errors, warnings) = lint_files(&[file_name], None);
+        // self.document_map
+        //     .insert(params.uri.to_string(), rope.clone());
+        // let (ast, errors, semantic_tokens) = parse(&params.text);
+        // self.client
+        //     .log_message(MessageType::INFO, format!("{:?}", errors))
+        //     .await;
+        let mut diags: IndexSet<KCLDiagnostic> = IndexSet::default();
+        for err in errors {
+            diags.insert(err);
+        }
+        for warning in warnings {
+            diags.insert(warning);
+        }
 
-//         if let Some(ast) = ast {
-//             self.ast_map.insert(params.uri.to_string(), ast);
-//         }
-//         self.client
-//             .log_message(MessageType::INFO, &format!("{:?}", semantic_tokens))
-//             .await;
-//         self.semantic_token_map
-//             .insert(params.uri.to_string(), semantic_tokens);
-//     }
-// }
+        let diagnostics = diags
+            .into_iter()
+            .filter_map(|item| {
+                // let (message, span) = match item.reason() {
+                //     chumsky::error::SimpleReason::Unclosed { span, delimiter } => {
+                //         (format!("Unclosed delimiter {}", delimiter), span.clone())
+                //     }
+                //     chumsky::error::SimpleReason::Unexpected => (
+                //         format!(
+                //             "{}, expected {}",
+                //             if item.found().is_some() {
+                //                 "Unexpected token in input"
+                //             } else {
+                //                 "Unexpected end of input"
+                //             },
+                //             if item.expected().len() == 0 {
+                //                 "something else".to_string()
+                //             } else {
+                //                 item.expected()
+                //                     .map(|expected| match expected {
+                //                         Some(expected) => expected.to_string(),
+                //                         None => "end of input".to_string(),
+                //                     })
+                //                     .collect::<Vec<_>>()
+                //                     .join(", ")
+                //             }
+                //         ),
+                //         item.span(),
+                //     ),
+                //     chumsky::error::SimpleReason::Custom(msg) => (msg.to_string(), item.span()),
+                // };
+                // let item = item.clone();
+                let message = item.messages[0].message.clone();
+                let pos = item.messages[0].pos.clone();
+                let start_position =
+                    Position::new(pos.line as u32 - 1, pos.column.unwrap_or(0) as u32);
+                let end_position =
+                    Position::new(pos.line as u32 - 1, pos.column.unwrap_or(0) as u32);
+                let severity: DiagnosticSeverity = match item.level {
+                    kclvm_error::Level::Error => DiagnosticSeverity::ERROR,
+                    kclvm_error::Level::Warning => DiagnosticSeverity::WARNING,
+                    kclvm_error::Level::Note => DiagnosticSeverity::HINT,
+                };
+
+                let diagnostic = || -> Option<Diagnostic> {
+                    // let start_line = rope.try_char_to_line(span.start)?;
+                    // let first_char = rope.try_line_to_char(start_line)?;
+                    // let start_column = span.start - first_char;
+                    // let start_position = offset_to_position(span.start, &rope)?;
+                    // let end_position = offset_to_position(span.end, &rope)?;
+                    // let end_line = rope.try_char_to_line(span.end)?;
+                    // let first_char = rope.try_line_to_char(end_line)?;
+                    // let end_column = span.end - first_char;
+                    // Some(Diagnostic::new_simple(
+                    //     Range::new(start_position, end_position),
+                    //     message,
+                    // ))
+                    Some(Diagnostic {
+                        range: Range::new(start_position, end_position),
+                        severity: Some(severity),
+                        code: None,
+                        code_description: None,
+                        source: None,
+                        message,
+                        related_information: None,
+                        tags: None,
+                        data: None,
+                    })
+                }();
+                diagnostic
+            })
+            .collect::<Vec<_>>();
+
+        self.client
+            .publish_diagnostics(params.uri.clone(), diagnostics, Some(params.version))
+            .await;
+
+        // if let Some(ast) = ast {
+        //     self.ast_map.insert(params.uri.to_string(), ast);
+        // }
+        // self.client
+        //     .log_message(MessageType::INFO, &format!("{:?}", semantic_tokens))
+        //     .await;
+        // self.semantic_token_map
+        //     .insert(params.uri.to_string(), semantic_tokens);
+    }
+}
 
 #[tokio::main]
 async fn main() {
