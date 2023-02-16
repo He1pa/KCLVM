@@ -80,7 +80,7 @@ impl LanguageServer for Backend {
                 // ),
                 // definition: Some(GotoCapability::default()),
                 definition_provider: Some(OneOf::Left(true)),
-                references_provider: Some(OneOf::Left(true)),
+                // references_provider: Some(OneOf::Left(true)),
                 // rename_provider: Some(OneOf::Left(true)),
                 ..ServerCapabilities::default()
             },
@@ -192,26 +192,26 @@ impl LanguageServer for Backend {
         Ok(())
     }
 
-    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
-        let uri = params.text_document_position.text_document.uri;
-        let mut pos_arg = vec![];
-        pos_arg.push(Location::new(
-            uri.clone(),
-            Range::new(
-                Position::new(0 as u32, 0 as u32),
-                Position::new(0 as u32, 1 as u32),
-            ),
-        ));
+    // async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        // let uri = params.text_document_position.text_document.uri;
+        // let mut pos_arg = vec![];
+        // pos_arg.push(Location::new(
+        //     uri.clone(),
+        //     Range::new(
+        //         Position::new(0 as u32, 0 as u32),
+        //         Position::new(0 as u32, 1 as u32),
+        //     ),
+        // ));
 
-        pos_arg.push(Location::new(
-            uri,
-            Range::new(
-                Position::new(1 as u32, 0 as u32),
-                Position::new(1 as u32, 1 as u32),
-            ),
-        ));
+        // pos_arg.push(Location::new(
+        //     uri,
+        //     Range::new(
+        //         Position::new(1 as u32, 0 as u32),
+        //         Position::new(1 as u32, 1 as u32),
+        //     ),
+        // ));
 
-        let reference_list = Some(pos_arg);
+        // let reference_list = Some(pos_arg);
         // let reference_list = || -> Option<Vec<Location>> {
         //     let uri = params.text_document_position.text_document.uri;
         //     let ast = self.ast_map.get(&uri.to_string())?;
@@ -234,8 +234,8 @@ impl LanguageServer for Backend {
         //         .collect::<Vec<_>>();
         //     Some(ret)
         // }();
-        Ok(reference_list)
-    }
+        // Ok(reference_list)
+    // }
 
     async fn goto_definition(
         &self,
