@@ -16,8 +16,7 @@ use tower_lsp::jsonrpc::{ErrorCode, Result};
 use tower_lsp::lsp_types::notification::Notification;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
-
-use std::time::{SystemTime, UNIX_EPOCH};
+use chrono::{Datelike, Duration, Local, TimeZone, Timelike};
 
 use kclvm_error::Diagnostic as KCLDiagnostic;
 
@@ -577,6 +576,15 @@ impl Backend {
     // }
 
     async fn on_change(&self, params: TextDocumentItem) {
+        self.client
+        .log_message(
+            MessageType::INFO,
+            format!(
+                "request: {} ",
+                Local.timestamp_millis(Local::now().timestamp_millis())
+            ),
+        )
+        .await;
         // let rope = ropey::Rope::from_str(&params.text);
         let uri = params.uri.clone();
         let file_name = uri.path();
@@ -591,10 +599,8 @@ impl Backend {
                 MessageType::INFO,
                 format!(
                     "start lint: {} ",
-                    SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs_f32()
+                    
+                    Local.timestamp_millis(Local::now().timestamp_millis())
                 ),
             )
             .await;
@@ -603,25 +609,23 @@ impl Backend {
         // let scope = resolve_program(&mut program);
 
         // let (errors, warnings) = lint_files(&[file_name], None);
-        let (errors, warnings) = match lint_files(&[file_name], None){
-            Ok((e, w)) => (e, w),
-            Err(_) => (IndexSet::default(), IndexSet::default()),
-        };
+        // let (errors, warnings) = match lint_files(&[file_name], None){
+        //     Ok((e, w)) => (e, w),
+        //     Err(_) => (IndexSet::default(), IndexSet::default()),
+        // };
+        let (errors, warnings) = lint_files(&[file_name], None);
         // self.document_map
         //     .insert(params.uri.to_string(), rope.clone());
         // let (ast, errors, semantic_tokens) = parse(&params.text);
-        self.client
-            .log_message(MessageType::INFO, format!("{:?}", errors))
-            .await;
+        // self.client
+        //     .log_message(MessageType::INFO, format!("{:?}", errors))
+        //     .await;
         self.client
             .log_message(
                 MessageType::INFO,
                 format!(
                     "end lint: {} ",
-                    SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs_f32()
+                    Local.timestamp_millis(Local::now().timestamp_millis())
                 ),
             )
             .await;
@@ -714,10 +718,7 @@ impl Backend {
                 MessageType::INFO,
                 format!(
                     "response: {} ",
-                    SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs_f32()
+                    Local.timestamp_millis(Local::now().timestamp_millis())
                 ),
             )
             .await;
