@@ -10,6 +10,7 @@ use lsp_types::CompletionParams;
 use lsp_types::CompletionResponse;
 use lsp_types::CompletionTriggerKind;
 use lsp_types::DocumentFormattingParams;
+use lsp_types::DocumentSymbolParams;
 use lsp_types::GotoDefinitionParams;
 use lsp_types::GotoDefinitionResponse;
 use lsp_types::Hover;
@@ -628,6 +629,75 @@ fn close_file_test() {
             },
         },
     );
+}
+
+#[test]
+fn rename_file_extension_test() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut path = root.clone();
+
+    path.push("src/test_data/diagnostics.k");
+
+    let path = path.to_str().unwrap();
+    let src = std::fs::read_to_string(path.clone()).unwrap();
+    let server = Project {}.server(InitializeParams::default());
+
+    // // Mock open file
+    // server.notification::<lsp_types::notification::DidOpenTextDocument>(
+    //     lsp_types::DidOpenTextDocumentParams {
+    //         text_document: TextDocumentItem {
+    //             uri: Url::from_file_path(path).unwrap(),
+    //             language_id: "KCL".to_string(),
+    //             version: 0,
+    //             text: src.clone(),
+    //         },
+    //     },
+    // );
+
+    // // Mock close file
+    // server.notification::<lsp_types::notification::DidCloseTextDocument>(
+    //     lsp_types::DidCloseTextDocumentParams {
+    //         text_document: TextDocumentIdentifier {
+    //             uri: Url::from_file_path(path).unwrap(),
+    //         },
+    //     },
+    // );
+
+    let mut path = root.clone();
+
+    path.push("src/test_data/diagnostics.kcl");
+
+    // Mock reopen file
+    server.notification::<lsp_types::notification::DidOpenTextDocument>(
+        lsp_types::DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: Url::from_file_path(path.clone()).unwrap(),
+                language_id: "KCL".to_string(),
+                version: 0,
+                text: src,
+            },
+        },
+    );
+
+    let id = server.next_request_id.get();
+    server.next_request_id.set(id.wrapping_add(1));
+
+    let r: Request = Request::new(
+        id.into(),
+        "textDocument/documentSymbol".to_string(),
+        DocumentSymbolParams {
+            text_document: TextDocumentIdentifier {
+                uri: Url::from_file_path(path).unwrap(),
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        },
+    );
+
+
+    // Send request and wait for it's response
+    let res = server.send_and_receive(r);
+    assert!(res.result.is_some());
 }
 
 #[test]
