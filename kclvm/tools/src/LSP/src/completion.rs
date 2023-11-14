@@ -251,6 +251,17 @@ fn completion_dot(
     let def = find_def_with_gs(pos, &gs, false);
     if let Some(def_ref) = def {
         if let Some(def) = gs.get_symbols().get_symbol(def_ref) {
+            let module_info = gs.get_packages().get_module_info(&pos.filename);
+            let attrs = def.get_all_attributes(gs.get_symbols(), module_info);
+            println!("{:?}", attrs.len());
+            for elem in attrs {
+                let def = gs.get_symbols().get_symbol(elem);
+                if let Some(def) = def{
+                    let sema_info = def.get_sema_info();
+                    let ty = sema_info.ty.clone();
+                    println!("{:?}", ty.map(|t| t.ty_str()));
+                }
+            }
             match def_ref.get_kind() {
                 kclvm_sema::core::symbol::SymbolKind::Value => {
                     let ty = def.get_sema_info().ty.clone();
@@ -266,17 +277,16 @@ fn completion_dot(
                     let name = def.get_name();
                     println!("{:?}", name);
                     println!(" pkg ty: {:?}", ty);
-                    if let Some(ty) = ty {
-                        items.extend(complete_ty(&ty, prog_scope, name))
-                    }
+                    // if let Some(ty) = ty {
+                    //     items.extend(complete_ty(&ty, prog_scope, name))
+                    // }
+
                 }
                 kclvm_sema::core::symbol::SymbolKind::Schema => {
                     let ty = def.get_sema_info().ty.clone();
                     let name = def.get_name();
                     println!("{:?}", name);
                     println!("schema  ty: {:?}", ty);
-                    let attr = def.get_all_attributes(data, module_info);
-
 
                     if let Some(ty) = ty {
                         items.extend(complete_ty(&ty, prog_scope, name))
@@ -901,7 +911,7 @@ mod tests {
         };
 
         let expected_labels: Vec<&str> = vec!["name", "age"];
-        // assert_eq!(got_labels, expected_labels);
+        assert_eq!(got_labels, expected_labels);
 
         let pos = KCLPos {
             filename: file.to_owned(),
@@ -967,7 +977,7 @@ mod tests {
             .iter()
             .map(|(name, ty)| func_ty_complete_label(name, &ty.into_function_ty()))
             .collect();
-        // assert_eq!(got_labels, expected_labels);
+        assert_eq!(got_labels, expected_labels);
 
         // test completion for literal str builtin function
         let pos = KCLPos {
