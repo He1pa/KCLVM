@@ -256,7 +256,7 @@ fn completion_dot(
             println!("{:?}", attrs.len());
             for elem in attrs {
                 let def = gs.get_symbols().get_symbol(elem);
-                if let Some(def) = def{
+                if let Some(def) = def {
                     let sema_info = def.get_sema_info();
                     let ty = sema_info.ty.clone();
                     println!("{:?}", ty.map(|t| t.ty_str()));
@@ -280,7 +280,6 @@ fn completion_dot(
                     // if let Some(ty) = ty {
                     //     items.extend(complete_ty(&ty, prog_scope, name))
                     // }
-
                 }
                 kclvm_sema::core::symbol::SymbolKind::Schema => {
                     let ty = def.get_sema_info().ty.clone();
