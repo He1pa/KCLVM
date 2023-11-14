@@ -159,15 +159,7 @@ fn complete_ty(ty: &Type, prog_scope: &ProgramScope, name: String) -> IndexSet<K
     let mut items: IndexSet<KCLCompletionItem> = IndexSet::new();
     match &ty.kind {
         kclvm_sema::ty::TypeKind::Str | kclvm_sema::ty::TypeKind::StrLit(_) => {
-            let funcs = STRING_MEMBER_FUNCTIONS;
-            for (name, ty) in funcs.iter() {
-                items.insert(KCLCompletionItem {
-                    label: func_ty_complete_label(name, &ty.into_function_ty()),
-                    detail: Some(ty.ty_str()),
-                    documentation: ty.ty_doc(),
-                    kind: Some(KCLCompletionItemKind::Function),
-                });
-            }
+            items.extend(complete_str_ty_builtin_func())
         }
         kclvm_sema::ty::TypeKind::Schema(schema) => {
             for (name, attr) in &schema.attrs {
@@ -216,33 +208,50 @@ fn complete_ty(ty: &Type, prog_scope: &ProgramScope, name: String) -> IndexSet<K
     items
 }
 
+fn complete_str_ty_builtin_func() -> IndexSet<KCLCompletionItem> {
+    let mut items: IndexSet<KCLCompletionItem> = IndexSet::new();
+    let funcs = STRING_MEMBER_FUNCTIONS;
+    for (name, ty) in funcs.iter() {
+        items.insert(KCLCompletionItem {
+            label: func_ty_complete_label(name, &ty.into_function_ty()),
+            detail: Some(ty.ty_str()),
+            documentation: ty.ty_doc(),
+            kind: Some(KCLCompletionItemKind::Function),
+        });
+    }
+    items
+}
+
 fn completion_dot(
     program: &Program,
     pos: &KCLPos,
     prog_scope: &ProgramScope,
     gs: &GlobalState,
 ) -> Option<lsp_types::CompletionResponse> {
-    // Get the pre position of trigger_character '.'
-    // let pos = &KCLPos {
-    //     filename: pos.filename.clone(),
-    //     line: pos.line,
-    //     column: pos.column.map(|c| c - 1),
-    // };
-
-    match program.pos_to_stmt(pos) {
-        Some(node) => match node.node {
-            Stmt::Import(stmt) => return completion_for_import(&stmt, pos, prog_scope, program),
-            _ => {}
-        },
-        None => {}
+    let mut items: IndexSet<KCLCompletionItem> = IndexSet::new();
+    if let Some(stmt) = program.pos_to_stmt(pos) {
+        match stmt.node {
+            Stmt::Import(stmt) => return completion_import(&stmt, pos, prog_scope, program),
+            _ => {
+                let pos = KCLPos {
+                    filename: pos.filename.clone(),
+                    line: pos.line,
+                    column: pos.column.map(|c| c - 1),
+                };
+                let (expr, parent) = inner_most_expr_in_stmt(&stmt.node, &pos, None);
+                if let Some(node) = expr {
+                    if let Expr::StringLit(s) = node.node {
+                        return Some(into_completion_items(&complete_str_ty_builtin_func()).into());
+                    }
+                }
+            }
+        }
     }
 
-    let mut items: IndexSet<KCLCompletionItem> = IndexSet::new();
-
     let def = find_def_with_gs(pos, &gs, false);
-    match def {
-        Some(def_ref) => match gs.get_symbols().get_symbol(def_ref) {
-            Some(def) => match def_ref.get_kind() {
+    if let Some(def_ref) = def {
+        if let Some(def) = gs.get_symbols().get_symbol(def_ref) {
+            match def_ref.get_kind() {
                 kclvm_sema::core::symbol::SymbolKind::Value => {
                     let ty = def.get_sema_info().ty.clone();
                     let name = def.get_name();
@@ -266,6 +275,9 @@ fn completion_dot(
                     let name = def.get_name();
                     println!("{:?}", name);
                     println!("schema  ty: {:?}", ty);
+                    let attr = def.get_all_attributes(data, module_info);
+
+
                     if let Some(ty) = ty {
                         items.extend(complete_ty(&ty, prog_scope, name))
                     }
@@ -279,13 +291,9 @@ fn completion_dot(
                         items.extend(complete_ty(&ty, prog_scope, name))
                     }
                 }
-                kclvm_sema::core::symbol::SymbolKind::TypeAlias => todo!(),
-                kclvm_sema::core::symbol::SymbolKind::Unresolved => todo!(),
-                kclvm_sema::core::symbol::SymbolKind::Rule => todo!(),
-            },
-            None => {}
-        },
-        None => {}
+                _ => {}
+            }
+        }
     }
     Some(into_completion_items(&items).into())
 }
@@ -522,7 +530,7 @@ fn schema_ty_completion_item(schema_ty: &SchemaType) -> KCLCompletionItem {
     }
 }
 
-fn completion_for_import(
+fn completion_import(
     stmt: &ImportStmt,
     _pos: &KCLPos,
     _prog_scope: &ProgramScope,
@@ -978,7 +986,7 @@ mod tests {
             .iter()
             .map(|(name, ty)| func_ty_complete_label(name, &ty.into_function_ty()))
             .collect();
-        // assert_eq!(got_labels, expected_labels);
+        assert_eq!(got_labels, expected_labels);
 
         let pos = KCLPos {
             filename: file,
