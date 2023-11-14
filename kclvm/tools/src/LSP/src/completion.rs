@@ -265,7 +265,7 @@ fn completion_dot(
                     let ty = def.get_sema_info().ty.clone();
                     let name = def.get_name();
                     println!("{:?}", name);
-                    println!("attr  ty: {:?}", ty);
+                    println!("schema  ty: {:?}", ty);
                     if let Some(ty) = ty {
                         items.extend(complete_ty(&ty, prog_scope, name))
                     }
