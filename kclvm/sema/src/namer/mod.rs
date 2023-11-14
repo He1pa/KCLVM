@@ -225,8 +225,10 @@ impl<'ctx> Namer<'ctx> {
                 .alloc_value_symbol(value_symbol, &AstIndex::default());
             self.gs
                 .get_symbols_mut()
-                .symbols_info
-                .string_builtin_symbols
+                .packages
+                .get_mut(package_symbol_ref.get_id())
+                .unwrap()
+                .members
                 .insert(name.to_string(), symbol_ref);
         }
     }

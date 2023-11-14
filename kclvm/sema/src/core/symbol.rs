@@ -68,7 +68,6 @@ pub struct KCLSymbolData {
 #[derive(Default, Debug, Clone)]
 pub struct SymbolDB {
     pub(crate) global_builtin_symbols: IndexMap<String, SymbolRef>,
-    pub(crate) string_builtin_symbols: IndexMap<String, SymbolRef>,
     pub(crate) fully_qualified_name_map: IndexMap<String, SymbolRef>,
     pub(crate) schema_builtin_symbols: IndexMap<SymbolRef, IndexMap<String, SymbolRef>>,
     pub(crate) ast_id_map: IndexMap<AstIndex, SymbolRef>,
@@ -917,7 +916,7 @@ impl Symbol for AttributeSymbol {
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
     ) -> Option<SymbolRef> {
-        let ty = data.symbols_info.symbol_ty_map.get(&self.id?)?;
+        let ty = self.sema_info.ty.as_ref()?;
         data.get_type_attribute(ty, name, module_info)
     }
 
@@ -930,7 +929,7 @@ impl Symbol for AttributeSymbol {
         if module_info.is_none() {
             return result;
         }
-        if let Some(ty) = data.symbols_info.symbol_ty_map.get(&self.id.unwrap()) {
+        if let Some(ty) = self.sema_info.ty.as_ref() {
             if let Some(symbol_ref) = data.get_type_symbol(ty, module_info) {
                 if let Some(symbol) = data.get_symbol(symbol_ref) {
                     result.append(&mut symbol.get_all_attributes(data, module_info))
@@ -1160,7 +1159,7 @@ impl Symbol for TypeAliasSymbol {
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
     ) -> Option<SymbolRef> {
-        let ty = data.symbols_info.symbol_ty_map.get(&self.id?)?;
+        let ty = self.sema_info.ty.as_ref()?;
         data.get_type_attribute(ty, name, module_info)
     }
 
