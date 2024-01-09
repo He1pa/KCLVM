@@ -44,6 +44,7 @@ use crate::{
         scope::{LocalSymbolScope, LocalSymbolScopeKind, RootSymbolScope, ScopeKind, ScopeRef},
         symbol::SymbolRef,
     },
+    resolver::scope::{NodeKey, NodeTyMap},
     ty::TypeRef,
 };
 
@@ -65,7 +66,7 @@ pub struct AdvancedResolver<'ctx> {
 
 pub struct Context<'ctx> {
     pub program: &'ctx Program,
-    node_ty_map: IndexMap<AstIndex, TypeRef>,
+    node_ty_map: NodeTyMap,
     scopes: Vec<ScopeRef>,
     current_pkgpath: Option<String>,
     current_filename: Option<String>,
@@ -81,11 +82,20 @@ pub struct Context<'ctx> {
     maybe_def: bool,
 }
 
+impl<'ctx> Context<'ctx> {
+    pub fn get_node_key(&self, id: &AstIndex) -> NodeKey {
+        NodeKey {
+            pkgpath: self.current_pkgpath.clone().unwrap(),
+            id: id.clone(),
+        }
+    }
+}
+
 impl<'ctx> AdvancedResolver<'ctx> {
     pub fn resolve_program(
         program: &'ctx Program,
         gs: GlobalState,
-        node_ty_map: IndexMap<AstIndex, TypeRef>,
+        node_ty_map: NodeTyMap,
     ) -> GlobalState {
         let mut advanced_resolver = Self {
             gs,
