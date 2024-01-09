@@ -20,12 +20,18 @@ pub(crate) fn hover(
     match def {
         Some(def_ref) => match gs.get_symbols().get_symbol(def_ref) {
             Some(obj) => match def_ref.get_kind() {
-                kclvm_sema::core::symbol::SymbolKind::Schema => match &obj.get_sema_info().ty {
+              
+                kclvm_sema::core::symbol::SymbolKind::Schema => 
+                {
+                    println!("{:?}",def_ref.get_id());
+                    println!("{}",obj.full_dump(gs.get_symbols()).unwrap());
+                    match &obj.get_sema_info().ty {
                     Some(schema_ty) => {
+                        println!("{:?}", schema_ty.ty_str());
                         docs.extend(build_schema_hover_content(&schema_ty.into_schema_type()));
                     }
-                    _ => {}
-                },
+                    _ => {println!("{:?}", "None");}
+                }},
                 kclvm_sema::core::symbol::SymbolKind::Attribute => {
                     let sema_info = obj.get_sema_info();
                     match &sema_info.ty {
@@ -37,7 +43,9 @@ pub(crate) fn hover(
                                 }
                             }
                         }
-                        _ => {}
+                        _ => {
+                            
+                        }
                     }
                 }
                 kclvm_sema::core::symbol::SymbolKind::Value => match &obj.get_sema_info().ty {
@@ -423,5 +431,33 @@ mod tests {
             }
             _ => unreachable!("test error"),
         }
+    }
+
+    #[test]
+    #[bench_test]
+    fn pkg_schema_hover() {
+        let (file, program, _, _, gs) = {
+
+        
+            let file = "".to_string();
+        
+            let (program, prog_scope, diags, gs) = crate::util::parse_param_and_compile(
+                crate::util::Param {
+                    file: file.clone(),
+                     module_cache: Some(kclvm_parser::KCLModuleCache::default()),
+                    // module_cache: None,
+                },
+                Some(std::sync::Arc::new(parking_lot::RwLock::new(Default::default()))),
+            )
+            .unwrap();
+            (file, program, prog_scope, diags, gs)
+        };
+        let pos = KCLPos {
+            filename: file.clone(),
+            line: 3,
+            column: Some(9),
+        };
+        let got = hover(&program, &pos, &gs);
+        println!("{:?}", got);
     }
 }

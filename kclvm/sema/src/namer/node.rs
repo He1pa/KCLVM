@@ -173,6 +173,7 @@ impl<'ctx> MutSelfTypedResultWalker<'ctx> for Namer<'ctx> {
             SchemaSymbol::new(schema_stmt.name.node.clone(), start_pos, end_pos, *owner),
             &schema_stmt.name.id,
         );
+        println!("{:?}",shcema_ref.get_id());
         self.ctx.owner_symbols.push(shcema_ref);
 
         for stmt in schema_stmt.body.iter() {

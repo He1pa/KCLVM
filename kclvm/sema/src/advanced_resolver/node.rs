@@ -154,6 +154,7 @@ impl<'ctx> MutSelfTypedResultWalker<'ctx> for AdvancedResolver<'ctx> {
             .get_symbols()
             .get_type_symbol(&schema_ty, self.get_current_module_info())
             .unwrap();
+        println!("pre inject ty: {:?}",schema_symbol.get_id());
 
         if self
             .gs
@@ -161,6 +162,7 @@ impl<'ctx> MutSelfTypedResultWalker<'ctx> for AdvancedResolver<'ctx> {
             .schemas
             .contains(schema_symbol.get_id())
         {
+            eprintln!("enter walk schema");
             let mut schema_builtin_member = IndexMap::new();
             for name in SCHEMA_MEMBER_FUNCTIONS.iter() {
                 let func_ty = Arc::new(Type::function(
@@ -199,6 +201,14 @@ impl<'ctx> MutSelfTypedResultWalker<'ctx> for AdvancedResolver<'ctx> {
                 ty: Some(schema_ty.clone()),
                 doc: schema_stmt.doc.as_ref().map(|doc| doc.node.clone()),
             };
+
+
+            eprintln!("{:?}",self.gs
+            .get_symbols_mut()
+            .schemas
+            .get_mut(schema_symbol.get_id())
+            .unwrap()
+            .sema_info);
         }
 
         self.enter_local_scope(

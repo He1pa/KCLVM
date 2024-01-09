@@ -229,7 +229,7 @@ impl KCLSymbolData {
 
             TypeKind::Schema(schema_ty) => {
                 let fully_qualified_ty_name = schema_ty.pkgpath.clone() + "." + &schema_ty.name;
-
+                println!("schema fqn:{}",fully_qualified_ty_name);
                 self.get_symbol_by_fully_qualified_name(&fully_qualified_ty_name)
             }
             TypeKind::Module(module_ty) => {
