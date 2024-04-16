@@ -135,6 +135,7 @@ pub fn load_packages_with_cache(
         &paths,
         opts.load_opts.clone(),
         Some(module_cache),
+        None,
     )?;
     let parse_errors = parse_result.errors;
     let (program, type_errors, gs) = if opts.resolve_ast {
@@ -155,6 +156,7 @@ pub fn load_packages_with_cache(
     } else {
         (parse_result.program, IndexSet::default(), gs)
     };
+    let main_pkg = program.main_pkg.clone();
     let mut packages = Packages {
         program,
         paths: parse_result.paths,
@@ -185,7 +187,7 @@ pub fn load_packages_with_cache(
                     name: symbol.get_name(),
                     owner: symbol.get_owner(),
                     def: symbol.get_definition(),
-                    attrs: symbol.get_all_attributes(symbols, None),
+                    attrs: symbol.get_all_attributes(symbols, None, &main_pkg),
                     is_global: symbol.is_global(),
                 };
                 packages.symbols.insert(*symbol_ref, info);
@@ -215,7 +217,7 @@ pub fn load_packages_with_cache(
                         name: symbol.get_name(),
                         owner: symbol.get_owner(),
                         def: symbol.get_definition(),
-                        attrs: symbol.get_all_attributes(symbols, None),
+                        attrs: symbol.get_all_attributes(symbols, None, &main_pkg),
                         is_global: symbol.is_global(),
                     };
                     packages.symbols.insert(*symbol_ref, info);
@@ -234,6 +236,7 @@ pub fn load_packages_with_cache(
                 scopes,
                 symbols,
                 ScopeKind::Package,
+                &main_pkg,
             );
         }
     }
@@ -265,6 +268,7 @@ fn collect_scope_info(
     scope_data: &ScopeData,
     symbol_data: &SymbolData,
     kind: ScopeKind,
+    main_pkg: &String,
 ) {
     if let Some(scope) = scope_data.get_scope(scope_ref) {
         let kind = if let Some(scope) = scope_data.try_get_local_scope(scope_ref) {
@@ -280,14 +284,21 @@ fn collect_scope_info(
                 owner: scope.get_owner(),
                 children: scope.get_children(),
                 defs: scope
-                    .get_all_defs(scope_data, symbol_data, None, false)
+                    .get_all_defs(scope_data, symbol_data, None, false, &main_pkg)
                     .values()
                     .copied()
                     .collect::<Vec<_>>(),
             },
         );
         for s in scope.get_children() {
-            collect_scope_info(scopes, &s, scope_data, symbol_data, ScopeKind::Module);
+            collect_scope_info(
+                scopes,
+                &s,
+                scope_data,
+                symbol_data,
+                ScopeKind::Module,
+                main_pkg,
+            );
         }
     }
 }

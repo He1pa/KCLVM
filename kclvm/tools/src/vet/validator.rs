@@ -177,7 +177,7 @@ pub fn validate(val_opt: ValidateOption) -> Result<bool> {
         None => TMP_FILE.to_string(),
     };
 
-    let mut module = kclvm_parser::parse_file_force_errors(&k_path, val_opt.kcl_code)?;
+    let mut module = kclvm_parser::parse_file_force_errors(&k_path, val_opt.kcl_code, None)?;
 
     let schemas = filter_schema_stmt(&module);
     let schema_name = match val_opt.schema_name {

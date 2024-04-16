@@ -21,7 +21,6 @@ use std::{fs, path::Path};
 use crate::goto_def::find_def_with_gs;
 use indexmap::IndexSet;
 use kclvm_ast::ast::{self, ImportStmt, Program, Stmt};
-use kclvm_ast::MAIN_PKG;
 use kclvm_config::modfile::KCL_FILE_EXTENSION;
 use kclvm_sema::core::global_state::GlobalState;
 
@@ -83,7 +82,7 @@ pub(crate) fn completion(
     match trigger_character {
         Some(c) => match c {
             '.' => completion_dot(program, pos, gs),
-            '=' | ':' => completion_assign(pos, gs),
+            '=' | ':' => completion_assign(program, pos, gs),
             '\n' => completion_newline(program, pos, gs),
             _ => None,
         },
@@ -152,7 +151,7 @@ pub(crate) fn completion(
                 }
 
                 // Complete all usable symbol obj in inner most scope
-                if let Some(defs) = gs.get_all_defs_in_scope(scope) {
+                if let Some(defs) = gs.get_all_defs_in_scope(scope, &program.main_pkg) {
                     for symbol_ref in defs {
                         match gs.get_symbols().get_symbol(symbol_ref) {
                             Some(def) => {
@@ -252,7 +251,8 @@ fn completion_dot(
         Some(def_ref) => {
             if let Some(def) = gs.get_symbols().get_symbol(def_ref) {
                 let module_info = gs.get_packages().get_module_info(&pos.filename);
-                let attrs = def.get_all_attributes(gs.get_symbols(), module_info);
+                let attrs =
+                    def.get_all_attributes(gs.get_symbols(), module_info, &program.main_pkg);
                 for attr in attrs {
                     let attr_def = gs.get_symbols().get_symbol(attr);
                     if let Some(attr_def) = attr_def {
@@ -320,7 +320,11 @@ fn completion_dot(
 
 /// Get completion items for trigger '=' or ':'
 /// Now, just completion for schema attr value
-fn completion_assign(pos: &KCLPos, gs: &GlobalState) -> Option<lsp_types::CompletionResponse> {
+fn completion_assign(
+    program: &Program,
+    pos: &KCLPos,
+    gs: &GlobalState,
+) -> Option<lsp_types::CompletionResponse> {
     let mut items = IndexSet::new();
     if let Some(symbol_ref) = find_def_with_gs(pos, gs, false) {
         if let Some(symbol) = gs.get_symbols().get_symbol(symbol_ref) {
@@ -334,6 +338,7 @@ fn completion_assign(pos: &KCLPos, gs: &GlobalState) -> Option<lsp_types::Comple
                                     ty_complete_label(
                                         ty,
                                         gs.get_packages().get_module_info(&pos.filename),
+                                        &program.main_pkg,
                                     )
                                     .iter()
                                     .map(|label| {
@@ -392,7 +397,7 @@ fn completion_newline(
     if let Some(_) = is_in_schema_expr(program, pos) {
         // Complete schema attr when input newline in schema
         if let Some(scope) = gs.look_up_scope(pos) {
-            if let Some(defs) = gs.get_all_defs_in_scope(scope) {
+            if let Some(defs) = gs.get_all_defs_in_scope(scope, &program.main_pkg) {
                 for symbol_ref in defs {
                     match gs.get_symbols().get_symbol(symbol_ref) {
                         Some(def) => {
@@ -619,7 +624,7 @@ fn completion_import(
     Some(into_completion_items(&items).into())
 }
 
-fn ty_complete_label(ty: &Type, module: Option<&ModuleInfo>) -> Vec<String> {
+fn ty_complete_label(ty: &Type, module: Option<&ModuleInfo>, main_pkg: &String) -> Vec<String> {
     match &ty.kind {
         TypeKind::Bool => vec!["True".to_string(), "False".to_string()],
         TypeKind::BoolLit(b) => {
@@ -637,12 +642,12 @@ fn ty_complete_label(ty: &Type, module: Option<&ModuleInfo>) -> Vec<String> {
         TypeKind::Dict(_) => vec!["{}".to_string()],
         TypeKind::Union(types) => types
             .iter()
-            .flat_map(|ty| ty_complete_label(ty, module))
+            .flat_map(|ty| ty_complete_label(ty, module, main_pkg))
             .collect(),
         TypeKind::Schema(schema) => {
             vec![format!(
                 "{}{}{}",
-                if schema.pkgpath.is_empty() || schema.pkgpath == MAIN_PKG {
+                if schema.pkgpath.is_empty() || schema.pkgpath == main_pkg.clone() {
                     "".to_string()
                 } else if let Some(m) = module {
                     format!("{}.", pkg_real_name(&schema.pkgpath, m))

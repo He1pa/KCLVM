@@ -86,7 +86,7 @@ pub fn format_source(file: &str, src: &str, opts: &FormatOptions) -> Result<(Str
     let module = if opts.omit_errors {
         parse_file(file, Some(src.to_string()))?.module
     } else {
-        parse_file_force_errors(file, Some(src.to_string()))?
+        parse_file_force_errors(file, Some(src.to_string()), None)?
     };
     let formatted_src = print_ast_module(&module);
     let is_formatted = src != formatted_src;

@@ -191,13 +191,14 @@ fn test_format_integration_konfig() -> Result<()> {
             continue;
         }
         assert!(
-            parse_file_force_errors(file, None).is_ok(),
+            parse_file_force_errors(file, None, None).is_ok(),
             "file {} test format failed",
             file
         );
         let src = std::fs::read_to_string(file)?;
         let (formatted_src, _) = format_source("", &src, &Default::default())?;
-        let parse_result = parse_file_force_errors("test.k", Some(formatted_src.clone() + "\n"));
+        let parse_result =
+            parse_file_force_errors("test.k", Some(formatted_src.clone() + "\n"), None);
         assert!(
             parse_result.is_ok(),
             "file {} test format failed, the formatted source is\n{}\n the parse error is\n{}",

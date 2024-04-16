@@ -25,6 +25,7 @@ pub trait Scope {
         symbol_data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
         local: bool,
+        main_pkg: &String,
     ) -> Option<SymbolRef>;
 
     fn get_all_defs(
@@ -33,6 +34,7 @@ pub trait Scope {
         symbol_data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
         recursive: bool,
+        main_pkg: &String,
     ) -> HashMap<String, SymbolRef>;
 
     fn dump(&self, scope_data: &ScopeData, symbol_data: &Self::SymbolData) -> Option<String>;
@@ -231,10 +233,11 @@ impl Scope for RootSymbolScope {
         symbol_data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
         _local: bool,
+        main_pkg: &String,
     ) -> Option<SymbolRef> {
         let package_symbol = symbol_data.get_symbol(self.owner)?;
 
-        package_symbol.get_attribute(name, symbol_data, module_info)
+        package_symbol.get_attribute(name, symbol_data, module_info, main_pkg)
     }
 
     fn get_all_defs(
@@ -243,10 +246,11 @@ impl Scope for RootSymbolScope {
         symbol_data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
         _recursive: bool,
+        main_pkg: &String,
     ) -> HashMap<String, SymbolRef> {
         let mut all_defs_map = HashMap::new();
         if let Some(owner) = symbol_data.get_symbol(self.owner) {
-            let all_defs = owner.get_all_attributes(symbol_data, module_info);
+            let all_defs = owner.get_all_attributes(symbol_data, module_info, main_pkg);
 
             for def_ref in all_defs {
                 if let Some(def) = symbol_data.get_symbol(def_ref) {
@@ -384,6 +388,7 @@ impl Scope for LocalSymbolScope {
         symbol_data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
         local: bool,
+        main_pkg: &String,
     ) -> Option<SymbolRef> {
         match self.defs.get(name) {
             Some(symbol_ref) => return Some(*symbol_ref),
@@ -391,7 +396,7 @@ impl Scope for LocalSymbolScope {
                 if let Some(owner) = self.owner.as_ref() {
                     let owner_symbol = symbol_data.get_symbol(*owner)?;
                     if let Some(symbol_ref) =
-                        owner_symbol.get_attribute(name, symbol_data, module_info)
+                        owner_symbol.get_attribute(name, symbol_data, module_info, main_pkg)
                     {
                         return Some(symbol_ref);
                     }
@@ -401,7 +406,7 @@ impl Scope for LocalSymbolScope {
                     None
                 } else {
                     let parent = scope_data.get_scope(&self.parent)?;
-                    parent.look_up_def(name, scope_data, symbol_data, module_info, false)
+                    parent.look_up_def(name, scope_data, symbol_data, module_info, false, main_pkg)
                 }
             }
         }
@@ -413,11 +418,12 @@ impl Scope for LocalSymbolScope {
         symbol_data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
         recursive: bool,
+        main_pkg: &String,
     ) -> HashMap<String, SymbolRef> {
         let mut all_defs_map = HashMap::new();
         if let Some(owner) = self.owner {
             if let Some(owner) = symbol_data.get_symbol(owner) {
-                for def_ref in owner.get_all_attributes(symbol_data, module_info) {
+                for def_ref in owner.get_all_attributes(symbol_data, module_info, main_pkg) {
                     if let Some(def) = symbol_data.get_symbol(def_ref) {
                         let name = def.get_name();
                         if !all_defs_map.contains_key(&name) {
@@ -457,7 +463,7 @@ impl Scope for LocalSymbolScope {
 
             if let Some(parent) = scope_data.get_scope(&self.parent) {
                 for (name, def_ref) in
-                    parent.get_all_defs(scope_data, symbol_data, module_info, true)
+                    parent.get_all_defs(scope_data, symbol_data, module_info, true, main_pkg)
                 {
                     if !all_defs_map.contains_key(&name) {
                         all_defs_map.insert(name, def_ref);

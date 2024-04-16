@@ -83,6 +83,7 @@ impl<'ctx> Resolver<'ctx> {
                         let schema_ty = SchemaType {
                             name: name.to_string(),
                             pkgpath: self.ctx.pkgpath.clone(),
+                            main_pkg: self.program.main_pkg.clone(),
                             filename: self.ctx.filename.clone(),
                             doc: parsed_doc.summary.clone(),
                             examples: parsed_doc.examples,
@@ -791,6 +792,7 @@ impl<'ctx> Resolver<'ctx> {
         let schema_ty = SchemaType {
             name: schema_stmt.name.node.clone(),
             pkgpath: self.ctx.pkgpath.clone(),
+            main_pkg: self.program.main_pkg.clone(),
             filename: self.ctx.filename.clone(),
             doc: parsed_doc.summary.clone(),
             examples: parsed_doc.examples,
@@ -914,6 +916,7 @@ impl<'ctx> Resolver<'ctx> {
         SchemaType {
             name: rule_stmt.name.node.clone(),
             pkgpath: self.ctx.pkgpath.clone(),
+            main_pkg: self.program.main_pkg.clone(),
             filename: self.ctx.filename.clone(),
             doc: parsed_doc.summary.clone(),
             examples: parsed_doc.examples,

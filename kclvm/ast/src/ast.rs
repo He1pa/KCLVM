@@ -363,19 +363,20 @@ pub struct SymbolSelectorSpec {
 pub struct Program {
     pub root: String,
     pub pkgs: HashMap<String, Vec<Module>>,
+    pub main_pkg: String,
 }
 
 impl Program {
     /// Get main entry files.
     pub fn get_main_files(&self) -> Vec<String> {
-        match self.pkgs.get(crate::MAIN_PKG) {
+        match self.pkgs.get(&self.main_pkg) {
             Some(modules) => modules.iter().map(|m| m.filename.clone()).collect(),
             None => vec![],
         }
     }
     /// Get the first module in the main package.
     pub fn get_main_package_first_module(&self) -> Option<&Module> {
-        match self.pkgs.get(crate::MAIN_PKG) {
+        match self.pkgs.get(&self.main_pkg) {
             Some(modules) => modules.first(),
             None => None,
         }

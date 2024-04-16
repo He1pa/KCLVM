@@ -135,7 +135,7 @@ pub fn load_test_suites<P: AsRef<str>>(path: P, opts: &TestOptions) -> Result<Ve
         let (normal_files, test_files) = get_test_files(pkg)?;
         let mut cases = IndexMap::new();
         for file in &test_files {
-            let module = parse_file_force_errors(file, None)?;
+            let module = parse_file_force_errors(file, None, None)?;
             for stmt in &module.body {
                 if let ast::Stmt::Assign(assign_stmt) = &stmt.node {
                     if let ast::Expr::Lambda(_lambda_expr) = &assign_stmt.value.node {

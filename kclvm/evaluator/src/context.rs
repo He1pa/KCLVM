@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use generational_arena::Index;
 use kclvm_ast::ast;
-use kclvm_runtime::{BacktraceFrame, MAIN_PKG_PATH};
+use kclvm_runtime::BacktraceFrame;
 
 use crate::{
     error as kcl_error,
@@ -32,7 +32,7 @@ impl<'ctx> Evaluator<'ctx> {
         self.pkgpath_stack
             .borrow()
             .get(if len > 2 { len - 2 } else { 2 - len })
-            .unwrap_or(&MAIN_PKG_PATH.to_string())
+            .unwrap_or(&self.program.main_pkg)
             .to_string()
     }
 

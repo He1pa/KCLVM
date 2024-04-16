@@ -78,6 +78,7 @@ impl GlobalState {
         scope_ref: ScopeRef,
         module_info: Option<&ModuleInfo>,
         local: bool,
+        main_pkg: &String,
     ) -> Option<SymbolRef> {
         match self.scopes.get_scope(&scope_ref)?.look_up_def(
             name,
@@ -85,6 +86,7 @@ impl GlobalState {
             &self.symbols,
             module_info,
             local,
+            main_pkg,
         ) {
             None => self
                 .symbols
@@ -171,7 +173,11 @@ impl GlobalState {
     ///
     /// result: [Option<Vec<SymbolRef>>]
     ///      all definition symbols in the scope
-    pub fn get_all_defs_in_scope(&self, scope: ScopeRef) -> Option<Vec<SymbolRef>> {
+    pub fn get_all_defs_in_scope(
+        &self,
+        scope: ScopeRef,
+        main_pkg: &String,
+    ) -> Option<Vec<SymbolRef>> {
         let scopes = &self.scopes;
         let scope = scopes.get_scope(&scope)?;
         let all_defs: Vec<SymbolRef> = scope
@@ -180,6 +186,7 @@ impl GlobalState {
                 &self.symbols,
                 self.packages.get_module_info(scope.get_filename()),
                 false,
+                main_pkg,
             )
             .values()
             .into_iter()

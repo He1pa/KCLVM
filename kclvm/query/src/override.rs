@@ -8,7 +8,6 @@ use kclvm_ast::config::try_get_config_expr_mut;
 use kclvm_ast::path::get_key_path;
 use kclvm_ast::walk_list_mut;
 use kclvm_ast::walker::MutSelfMutWalker;
-use kclvm_ast::MAIN_PKG;
 use kclvm_ast_pretty::print_ast_module;
 use kclvm_parser::parse_expr;
 use kclvm_sema::pre_process::{fix_config_expr_nest_attr, transform_multi_assign};
@@ -46,7 +45,7 @@ pub fn apply_overrides(
 ) -> Result<()> {
     for o in overrides {
         let pkgpath = if o.pkgpath.is_empty() {
-            MAIN_PKG
+            &prog.main_pkg
         } else {
             &o.pkgpath
         };

@@ -348,7 +348,7 @@ pub(crate) fn handle_document_symbol(
         Some(db) => db,
         None => return Err(anyhow!(LSPError::Retry)),
     };
-    let res = document_symbol(&file, &db.gs);
+    let res = document_symbol(&db.prog, &file, &db.gs);
 
     if !snapshot.verify_request_version(db.version, &path)? {
         return Err(anyhow!(LSPError::Retry));

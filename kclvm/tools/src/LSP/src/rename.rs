@@ -125,7 +125,7 @@ where
 
     let file_paths = package_path_to_file_path(pkg_path, vfs.clone());
 
-    if let Ok((_, gs)) = parse_files_with_vfs(
+    if let Ok((prog, gs)) = parse_files_with_vfs(
         pkg_path.to_string(),
         file_paths,
         vfs.clone(),
@@ -133,13 +133,13 @@ where
     ) {
         if let Some(symbol_ref) = gs
             .get_symbols()
-            .get_symbol_by_fully_qualified_name(kclvm_ast::MAIN_PKG)
+            .get_symbol_by_fully_qualified_name(&prog.main_pkg)
         {
             let mut owner_ref = symbol_ref;
             let mut target = None;
             for field in &fields {
                 let owner = gs.get_symbols().get_symbol(owner_ref).unwrap();
-                target = owner.get_attribute(field, gs.get_symbols(), None);
+                target = owner.get_attribute(field, gs.get_symbols(), None, &prog.main_pkg);
                 if let Some(target) = target {
                     owner_ref = target;
                 }
@@ -178,7 +178,7 @@ where
     };
     let files: Vec<&str> = file_paths.iter().map(|s| s.as_str()).collect();
     let sess: ParseSessionRef = ParseSessionRef::default();
-    let mut program = load_program(sess.clone(), &files, Some(opts), None)?.program;
+    let mut program = load_program(sess.clone(), &files, Some(opts), None, None)?.program;
 
     let prog_scope = resolve_program_with_opts(
         &mut program,

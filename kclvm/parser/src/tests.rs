@@ -139,6 +139,7 @@ pub(crate) fn parsing_file_ast_json(filename: &str, src: &str) -> String {
         Arc::new(ParseSession::default()),
         filename,
         Some(src.into()),
+        None,
     )
     .unwrap();
     serde_json::ser::to_string_pretty(&m).unwrap()
@@ -189,7 +190,7 @@ const PARSE_FILE_INVALID_TEST_CASES: &[&str] = &[
 #[test]
 pub fn test_parse_file_invalid() {
     for case in PARSE_FILE_INVALID_TEST_CASES {
-        let result = parse_file_force_errors("test.k", Some((&case).to_string()));
+        let result = parse_file_force_errors("test.k", Some((&case).to_string()), None);
         assert!(result.is_err(), "case: {case}, result {result:?}");
     }
 }
@@ -292,7 +293,7 @@ pub fn test_import_vendor() {
     let test_fn =
         |test_case_name: &&str, pkgs: &Vec<&str>, module_cache: Option<KCLModuleCache>| {
             let test_case_path = dir.join(test_case_name).display().to_string();
-            let m = load_program(sess.clone(), &[&test_case_path], None, module_cache)
+            let m = load_program(sess.clone(), &[&test_case_path], None, module_cache, None)
                 .unwrap()
                 .program;
             assert_eq!(m.pkgs.len(), pkgs.len());
@@ -338,7 +339,7 @@ pub fn test_import_vendor_without_kclmod() {
 
     test_cases.into_iter().for_each(|(test_case_name, pkgs)| {
         let test_case_path = dir.join(test_case_name).display().to_string();
-        let m = load_program(sess.clone(), &[&test_case_path], None, None)
+        let m = load_program(sess.clone(), &[&test_case_path], None, None, None)
             .unwrap()
             .program;
         assert_eq!(m.pkgs.len(), pkgs.len());
@@ -371,7 +372,7 @@ pub fn test_import_vendor_without_vendor_home() {
         .canonicalize()
         .unwrap();
     let test_case_path = dir.join("assign.k").display().to_string();
-    match load_program(sess.clone(), &[&test_case_path], None, None) {
+    match load_program(sess.clone(), &[&test_case_path], None, None, None) {
         Ok(_) => {
             let errors = sess.classification().0;
             let msgs = [
@@ -395,6 +396,7 @@ pub fn test_import_vendor_without_vendor_home() {
         &[&test_case_path],
         None,
         Some(KCLModuleCache::default()),
+        None,
     ) {
         Ok(_) => {
             let errors = sess.classification().0;
@@ -425,7 +427,7 @@ fn test_import_vendor_with_same_internal_pkg() {
         .canonicalize()
         .unwrap();
     let test_case_path = dir.join("same_name.k").display().to_string();
-    match load_program(sess.clone(), &[&test_case_path], None, None) {
+    match load_program(sess.clone(), &[&test_case_path], None, None, None) {
         Ok(_) => {
             let errors = sess.classification().0;
             let msgs = [
@@ -445,6 +447,7 @@ fn test_import_vendor_with_same_internal_pkg() {
         &[&test_case_path],
         None,
         Some(KCLModuleCache::default()),
+        None,
     ) {
         Ok(_) => {
             let errors = sess.classification().0;
@@ -472,7 +475,7 @@ fn test_import_vendor_without_kclmod_and_same_name() {
         .canonicalize()
         .unwrap();
     let test_case_path = dir.join("assign.k").display().to_string();
-    match load_program(sess.clone(), &[&test_case_path], None, None) {
+    match load_program(sess.clone(), &[&test_case_path], None, None, None) {
         Ok(_) => {
             let errors = sess.classification().0;
             let msgs = [
@@ -493,6 +496,7 @@ fn test_import_vendor_without_kclmod_and_same_name() {
         &[&test_case_path],
         None,
         Some(KCLModuleCache::default()),
+        None,
     ) {
         Ok(_) => {
             let errors = sess.classification().0;
@@ -574,7 +578,7 @@ fn test_import_vendor_by_external_arguments() {
             external_dir.join(dep_name).display().to_string(),
         );
         let test_case_path = dir.join(test_case_name).display().to_string();
-        let m = load_program(sess.clone(), &[&test_case_path], None, module_cache)
+        let m = load_program(sess.clone(), &[&test_case_path], None, module_cache, None)
             .unwrap()
             .program;
         assert_eq!(m.pkgs.len(), pkgs.len());
@@ -639,6 +643,7 @@ fn test_get_compile_entries_from_paths() {
             kcl3_path.display().to_string(),
         ],
         &opts,
+        &DEFAULT_MAIN_PKG.to_string(),
     )
     .unwrap();
 
@@ -696,6 +701,7 @@ fn test_dir_with_k_code_list() {
         &[&testpath.display().to_string()],
         Some(opts.clone()),
         None,
+        None,
     ) {
         Ok(_) => panic!("unreachable code"),
         Err(err) => assert!(err.to_string().contains("Invalid code list")),
@@ -706,6 +712,7 @@ fn test_dir_with_k_code_list() {
         &[&testpath.display().to_string()],
         Some(opts),
         Some(KCLModuleCache::default()),
+        None,
     ) {
         Ok(_) => panic!("unreachable code"),
         Err(err) => assert!(err.to_string().contains("Invalid code list")),
@@ -719,7 +726,7 @@ pub fn test_pkg_not_found_suggestion() {
         .canonicalize()
         .unwrap();
     let test_case_path = dir.join("suggestions.k").display().to_string();
-    match load_program(sess.clone(), &[&test_case_path], None, None) {
+    match load_program(sess.clone(), &[&test_case_path], None, None, None) {
         Ok(_) => {
             let errors = sess.classification().0;
             let msgs = [

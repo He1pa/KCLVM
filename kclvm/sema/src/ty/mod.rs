@@ -13,7 +13,6 @@ pub use constants::*;
 pub use context::{TypeContext, TypeInferMethods};
 use indexmap::IndexMap;
 use kclvm_ast::ast;
-use kclvm_ast::MAIN_PKG;
 use kclvm_error::diagnostic::Range;
 use kclvm_error::Position;
 pub use unify::*;
@@ -186,6 +185,8 @@ pub struct SchemaType {
     pub name: String,
     /// The schema definition package path
     pub pkgpath: String,
+    /// The program main pkg
+    pub main_pkg: String,
     /// The schema definition file path.
     pub filename: String,
     /// The schema definition document string.
@@ -234,7 +235,7 @@ pub struct SchemaType {
 impl SchemaType {
     /// Get the object type string with pkgpath
     pub fn ty_str_with_pkgpath(&self) -> String {
-        if self.pkgpath.is_empty() || self.pkgpath == MAIN_PKG {
+        if self.pkgpath.is_empty() || self.pkgpath == self.main_pkg {
             self.name.clone()
         } else {
             format!("@{}.{}", self.pkgpath, self.name)

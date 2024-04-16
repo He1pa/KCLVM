@@ -14,6 +14,7 @@ use crate::{execute, runner::ExecProgramArgs};
 use anyhow::Context;
 use anyhow::Result;
 use kclvm_ast::ast::{Module, Program};
+use kclvm_ast::DEFAULT_MAIN_PKG;
 #[cfg(feature = "llvm")]
 use kclvm_compiler::codegen::OBJECT_FILE_SUFFIX;
 use kclvm_config::settings::load_file;
@@ -157,7 +158,7 @@ fn gen_full_path(rel_path: String) -> Result<String> {
 
 /// Load test kcl file to ast.Program
 fn load_test_program(filename: String) -> Program {
-    let module = kclvm_parser::parse_file_force_errors(&filename, None).unwrap();
+    let module = kclvm_parser::parse_file_force_errors(&filename, None, None).unwrap();
     construct_program(module)
 }
 
@@ -170,6 +171,7 @@ fn parse_program(test_kcl_case_path: &str) -> Program {
         &[test_kcl_case_path],
         Some(opts),
         None,
+        None,
     )
     .unwrap()
     .program
@@ -179,6 +181,7 @@ fn parse_program(test_kcl_case_path: &str) -> Program {
 /// Default configuration:
 ///     module.pkg = "__main__"
 ///     Program.root = "__main__"
+///     Program.main_pkg = "__main__"
 fn construct_program(mut module: Module) -> Program {
     module.pkg = MAIN_PKG_NAME.to_string();
     let mut pkgs_ast = HashMap::new();
@@ -186,6 +189,7 @@ fn construct_program(mut module: Module) -> Program {
     Program {
         root: MAIN_PKG_NAME.to_string(),
         pkgs: pkgs_ast,
+        main_pkg: DEFAULT_MAIN_PKG.to_string(),
     }
 }
 
@@ -285,7 +289,7 @@ fn assemble_lib_for_test(
     let opts = args.get_load_program_options();
     let sess = Arc::new(ParseSession::default());
     // parse and resolve kcl
-    let mut program = load_program(sess, &files, Some(opts), None)
+    let mut program = load_program(sess, &files, Some(opts), None, None)
         .unwrap()
         .program;
 
@@ -562,7 +566,7 @@ fn exec(file: &str) -> Result<String, String> {
     let opts = args.get_load_program_options();
     let sess = Arc::new(ParseSession::default());
     // Load AST program
-    let program = load_program(sess.clone(), &[file], Some(opts), None)
+    let program = load_program(sess.clone(), &[file], Some(opts), None, None)
         .unwrap()
         .program;
     // Resolve ATS, generate libs, link libs and execute.

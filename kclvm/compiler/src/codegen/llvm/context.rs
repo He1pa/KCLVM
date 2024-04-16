@@ -24,7 +24,7 @@ use std::str;
 
 use kclvm_ast::ast;
 use kclvm_error::*;
-use kclvm_runtime::{ApiFunc, MAIN_PKG_PATH, PKG_PATH_PREFIX};
+use kclvm_runtime::{ApiFunc, PKG_PATH_PREFIX};
 use kclvm_sema::builtin;
 use kclvm_sema::pkgpath_without_prefix;
 use kclvm_sema::plugin;
@@ -1260,7 +1260,7 @@ impl<'ctx> LLVMCodeGenContext<'ctx> {
             // Any user-defined lambda scope greater than 1.
             lambda_stack: RefCell::new(vec![GLOBAL_LEVEL]),
             schema_expr_stack: RefCell::new(vec![]),
-            pkgpath_stack: RefCell::new(vec![String::from(MAIN_PKG_PATH)]),
+            pkgpath_stack: RefCell::new(vec![program.main_pkg.clone()]),
             filename_stack: RefCell::new(vec![String::from("")]),
             target_vars: RefCell::new(vec![String::from("")]),
             global_strings: RefCell::new(IndexMap::default()),
@@ -1287,11 +1287,11 @@ impl<'ctx> LLVMCodeGenContext<'ctx> {
         let context_ptr_type = self.context_ptr_type();
         let fn_type = tpe.fn_type(&[context_ptr_type.into()], false);
         let void_fn_type = void_type.fn_type(&[context_ptr_type.into()], false);
-        let has_main_pkg = self.program.pkgs.contains_key(MAIN_PKG_PATH);
+        let has_main_pkg = self.program.pkgs.contains_key(&self.program.main_pkg);
         let function = if self.no_link {
             let mut modules = self.modules.borrow_mut();
             let (pkgpath, function_name) = if has_main_pkg {
-                (MAIN_PKG_PATH.to_string(), MODULE_NAME.to_string())
+                (self.program.main_pkg.clone(), MODULE_NAME.to_string())
             } else {
                 assert!(self.program.pkgs.len() == 1);
                 let pkgpath = format!(
@@ -1398,11 +1398,11 @@ impl<'ctx> LLVMCodeGenContext<'ctx> {
             self.ret_void();
         } else {
             // Init scope and all builtin functions
-            self.init_scope(MAIN_PKG_PATH);
+            self.init_scope(&self.program.main_pkg);
             let main_pkg_modules = self
                 .program
                 .pkgs
-                .get(MAIN_PKG_PATH)
+                .get(&self.program.main_pkg)
                 .expect(kcl_error::INTERNAL_ERROR_MSG);
             self.compile_ast_modules(main_pkg_modules);
             // Get the JSON string including all global variables
@@ -1845,12 +1845,13 @@ impl<'ctx> LLVMCodeGenContext<'ctx> {
     /// Get the variable value named `name` from the scope named `pkgpath`, return Err when not found
     pub fn get_variable_in_pkgpath(&self, name: &str, pkgpath: &str) -> CompileResult<'ctx> {
         let pkg_scopes = self.pkg_scopes.borrow();
-        let pkgpath =
-            if !pkgpath.starts_with(kclvm_runtime::PKG_PATH_PREFIX) && pkgpath != MAIN_PKG_PATH {
-                format!("{}{}", kclvm_runtime::PKG_PATH_PREFIX, pkgpath)
-            } else {
-                pkgpath.to_string()
-            };
+        let pkgpath = if !pkgpath.starts_with(kclvm_runtime::PKG_PATH_PREFIX)
+            && pkgpath != self.program.main_pkg
+        {
+            format!("{}{}", kclvm_runtime::PKG_PATH_PREFIX, pkgpath)
+        } else {
+            pkgpath.to_string()
+        };
         let mut result = Err(kcl_error::KCLError {
             message: format!("name '{}' is not defined", name),
             ty: kcl_error::KCLErrorType::Compile,
@@ -1994,7 +1995,7 @@ impl<'ctx> LLVMCodeGenContext<'ctx> {
         pkgpath: &str,
     ) -> CompileResult<'ctx> {
         let ext_pkgpath = if !pkgpath.starts_with(kclvm_runtime::PKG_PATH_PREFIX)
-            && pkgpath != kclvm_runtime::MAIN_PKG_PATH
+            && pkgpath != self.program.main_pkg
         {
             format!("{}{}", kclvm_runtime::PKG_PATH_PREFIX, pkgpath)
         } else {
@@ -2041,11 +2042,12 @@ impl<'ctx> LLVMCodeGenContext<'ctx> {
             let last_lambda_scope = self.last_lambda_scope();
             // Get variable map in the current scope.
             let pkgpath = self.current_pkgpath();
-            let pkgpath = if !pkgpath.starts_with(PKG_PATH_PREFIX) && pkgpath != MAIN_PKG_PATH {
-                format!("{}{}", PKG_PATH_PREFIX, pkgpath)
-            } else {
-                pkgpath
-            };
+            let pkgpath =
+                if !pkgpath.starts_with(PKG_PATH_PREFIX) && pkgpath != self.program.main_pkg {
+                    format!("{}{}", PKG_PATH_PREFIX, pkgpath)
+                } else {
+                    pkgpath
+                };
             let pkg_scopes = self.pkg_scopes.borrow();
             let scopes = pkg_scopes
                 .get(&pkgpath)

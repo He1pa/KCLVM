@@ -27,18 +27,21 @@ pub trait Symbol {
         name: &str,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> Option<SymbolRef>;
     fn has_attribute(
         &self,
         name: &str,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> bool;
 
     fn get_all_attributes(
         &self,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> Vec<SymbolRef>;
 
     fn simple_dump(&self) -> String;
@@ -244,6 +247,7 @@ impl SymbolData {
         &self,
         ty: &Type,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> Option<SymbolRef> {
         match &ty.kind {
             //TODO: builtin ty symbol,now we just return none
@@ -281,7 +285,7 @@ impl SymbolData {
                 let fully_qualified_ty_name = if name.contains('.') {
                     name.replacen(&pkgname, pkgpath, 1)
                 } else {
-                    kclvm_ast::MAIN_PKG.to_string() + name
+                    main_pkg.clone() + name
                 };
 
                 self.get_symbol_by_fully_qualified_name(&fully_qualified_ty_name)
@@ -294,6 +298,7 @@ impl SymbolData {
         ty: &Type,
         name: &str,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> Vec<SymbolRef> {
         match &ty.kind {
             //TODO: builtin ty symbol,now we just return none
@@ -308,9 +313,9 @@ impl SymbolData {
             TypeKind::FloatLit(_) => vec![],
             TypeKind::Str => {
                 let mut result = vec![];
-                if let Some(symbol_ref) = self.get_type_symbol(ty, module_info) {
+                if let Some(symbol_ref) = self.get_type_symbol(ty, module_info, main_pkg) {
                     if let Some(symbol) = self.get_symbol(symbol_ref) {
-                        result = symbol.get_all_attributes(self, module_info);
+                        result = symbol.get_all_attributes(self, module_info, main_pkg);
                     }
                 }
                 result
@@ -323,33 +328,38 @@ impl SymbolData {
             TypeKind::Union(tys) => {
                 let mut result = vec![];
                 for ty in tys.iter() {
-                    result.append(&mut self.get_type_all_attribute(ty, name, module_info));
+                    result.append(&mut self.get_type_all_attribute(
+                        ty,
+                        name,
+                        module_info,
+                        main_pkg,
+                    ));
                 }
                 result
             }
             TypeKind::Schema(_) => {
                 let mut result = vec![];
-                if let Some(symbol_ref) = self.get_type_symbol(ty, module_info) {
+                if let Some(symbol_ref) = self.get_type_symbol(ty, module_info, main_pkg) {
                     if let Some(symbol) = self.get_symbol(symbol_ref) {
-                        result = symbol.get_all_attributes(self, module_info);
+                        result = symbol.get_all_attributes(self, module_info, main_pkg);
                     }
                 }
                 result
             }
             TypeKind::Module(_) => {
                 let mut result = vec![];
-                if let Some(symbol_ref) = self.get_type_symbol(ty, module_info) {
+                if let Some(symbol_ref) = self.get_type_symbol(ty, module_info, main_pkg) {
                     if let Some(symbol) = self.get_symbol(symbol_ref) {
-                        result = symbol.get_all_attributes(self, module_info);
+                        result = symbol.get_all_attributes(self, module_info, main_pkg);
                     }
                 }
                 result
             }
             TypeKind::Named(_) => {
                 let mut result = vec![];
-                if let Some(symbol_ref) = self.get_type_symbol(ty, module_info) {
+                if let Some(symbol_ref) = self.get_type_symbol(ty, module_info, main_pkg) {
                     if let Some(symbol) = self.get_symbol(symbol_ref) {
-                        result = symbol.get_all_attributes(self, module_info);
+                        result = symbol.get_all_attributes(self, module_info, main_pkg);
                     }
                 }
                 result
@@ -362,6 +372,7 @@ impl SymbolData {
         ty: &Type,
         name: &str,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> Option<SymbolRef> {
         match &ty.kind {
             TypeKind::None => None,
@@ -374,32 +385,34 @@ impl SymbolData {
             TypeKind::Float => None,
             TypeKind::FloatLit(_) => None,
             TypeKind::Str => self
-                .get_symbol(self.get_type_symbol(ty, module_info)?)?
-                .get_attribute(name, self, module_info),
+                .get_symbol(self.get_type_symbol(ty, module_info, main_pkg)?)?
+                .get_attribute(name, self, module_info, main_pkg),
             TypeKind::StrLit(_) => self
-                .get_symbol(self.get_type_symbol(ty, module_info)?)?
-                .get_attribute(name, self, module_info),
+                .get_symbol(self.get_type_symbol(ty, module_info, main_pkg)?)?
+                .get_attribute(name, self, module_info, main_pkg),
             TypeKind::List(_) => None,
             TypeKind::Dict(_) => None,
             TypeKind::NumberMultiplier(_) => None,
             TypeKind::Function(_) => None,
             TypeKind::Union(tys) => {
                 for ty in tys.iter() {
-                    if let Some(symbol_ref) = self.get_type_attribute(ty, name, module_info) {
+                    if let Some(symbol_ref) =
+                        self.get_type_attribute(ty, name, module_info, main_pkg)
+                    {
                         return Some(symbol_ref);
                     }
                 }
                 None
             }
             TypeKind::Schema(_) => self
-                .get_symbol(self.get_type_symbol(ty, module_info)?)?
-                .get_attribute(name, self, module_info),
+                .get_symbol(self.get_type_symbol(ty, module_info, main_pkg)?)?
+                .get_attribute(name, self, module_info, main_pkg),
             TypeKind::Module(_) => self
-                .get_symbol(self.get_type_symbol(ty, module_info)?)?
-                .get_attribute(name, self, module_info),
+                .get_symbol(self.get_type_symbol(ty, module_info, main_pkg)?)?
+                .get_attribute(name, self, module_info, main_pkg),
             TypeKind::Named(_) => self
-                .get_symbol(self.get_type_symbol(ty, module_info)?)?
-                .get_attribute(name, self, module_info),
+                .get_symbol(self.get_type_symbol(ty, module_info, main_pkg)?)?
+                .get_attribute(name, self, module_info, main_pkg),
         }
     }
 
@@ -804,15 +817,18 @@ impl Symbol for SchemaSymbol {
         name: &str,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> Option<SymbolRef> {
         match self.attributes.get(name) {
             Some(attribute) => Some(*attribute),
             None => {
                 if let Some(parent_schema) = self.parent_schema {
-                    if let Some(attribute) =
-                        data.get_symbol(parent_schema)?
-                            .get_attribute(name, data, module_info)
-                    {
+                    if let Some(attribute) = data.get_symbol(parent_schema)?.get_attribute(
+                        name,
+                        data,
+                        module_info,
+                        main_pkg,
+                    ) {
                         return Some(attribute);
                     }
                 }
@@ -820,7 +836,7 @@ impl Symbol for SchemaSymbol {
                 if let Some(for_host) = self.for_host {
                     if let Some(attribute) =
                         data.get_symbol(for_host)?
-                            .get_attribute(name, data, module_info)
+                            .get_attribute(name, data, module_info, main_pkg)
                     {
                         return Some(attribute);
                     }
@@ -829,7 +845,7 @@ impl Symbol for SchemaSymbol {
                 for mixin in self.mixins.iter() {
                     if let Some(attribute) =
                         data.get_symbol(*mixin)?
-                            .get_attribute(name, data, module_info)
+                            .get_attribute(name, data, module_info, main_pkg)
                     {
                         return Some(attribute);
                     }
@@ -844,6 +860,7 @@ impl Symbol for SchemaSymbol {
         &self,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> Vec<SymbolRef> {
         let mut result = vec![];
         for attribute in self.attributes.values() {
@@ -851,18 +868,18 @@ impl Symbol for SchemaSymbol {
         }
         if let Some(parent_schema) = self.parent_schema {
             if let Some(parent) = data.get_symbol(parent_schema) {
-                result.append(&mut parent.get_all_attributes(data, module_info))
+                result.append(&mut parent.get_all_attributes(data, module_info, main_pkg))
             }
         }
 
         if let Some(for_host) = self.for_host {
             if let Some(for_host) = data.get_symbol(for_host) {
-                result.append(&mut for_host.get_all_attributes(data, module_info))
+                result.append(&mut for_host.get_all_attributes(data, module_info, main_pkg))
             }
         }
         for mixin in self.mixins.iter() {
             if let Some(mixin) = data.get_symbol(*mixin) {
-                result.append(&mut mixin.get_all_attributes(data, module_info))
+                result.append(&mut mixin.get_all_attributes(data, module_info, main_pkg))
             }
         }
         result
@@ -873,8 +890,10 @@ impl Symbol for SchemaSymbol {
         name: &str,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> bool {
-        self.get_attribute(name, data, module_info).is_some()
+        self.get_attribute(name, data, module_info, main_pkg)
+            .is_some()
     }
 
     fn simple_dump(&self) -> String {
@@ -1001,20 +1020,22 @@ impl Symbol for ValueSymbol {
         name: &str,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> Option<SymbolRef> {
-        data.get_type_attribute(self.sema_info.ty.as_ref()?, name, module_info)
+        data.get_type_attribute(self.sema_info.ty.as_ref()?, name, module_info, main_pkg)
     }
 
     fn get_all_attributes(
         &self,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> Vec<SymbolRef> {
         let mut result = vec![];
         if let Some(ty) = self.sema_info.ty.as_ref() {
-            if let Some(symbol_ref) = data.get_type_symbol(ty, module_info) {
+            if let Some(symbol_ref) = data.get_type_symbol(ty, module_info, main_pkg) {
                 if let Some(symbol) = data.get_symbol(symbol_ref) {
-                    result.append(&mut symbol.get_all_attributes(data, module_info))
+                    result.append(&mut symbol.get_all_attributes(data, module_info, main_pkg))
                 }
             }
         }
@@ -1027,8 +1048,10 @@ impl Symbol for ValueSymbol {
         name: &str,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> bool {
-        self.get_attribute(name, data, module_info).is_some()
+        self.get_attribute(name, data, module_info, main_pkg)
+            .is_some()
     }
     fn simple_dump(&self) -> String {
         let mut output = "{\n".to_string();
@@ -1129,24 +1152,26 @@ impl Symbol for AttributeSymbol {
         name: &str,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> Option<SymbolRef> {
         let ty = self.sema_info.ty.as_ref()?;
-        data.get_type_attribute(ty, name, module_info)
+        data.get_type_attribute(ty, name, module_info, main_pkg)
     }
 
     fn get_all_attributes(
         &self,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> Vec<SymbolRef> {
         let mut result = vec![];
         if module_info.is_none() {
             return result;
         }
         if let Some(ty) = self.sema_info.ty.as_ref() {
-            if let Some(symbol_ref) = data.get_type_symbol(ty, module_info) {
+            if let Some(symbol_ref) = data.get_type_symbol(ty, module_info, main_pkg) {
                 if let Some(symbol) = data.get_symbol(symbol_ref) {
-                    result.append(&mut symbol.get_all_attributes(data, module_info))
+                    result.append(&mut symbol.get_all_attributes(data, module_info, main_pkg))
                 }
             }
         }
@@ -1159,8 +1184,10 @@ impl Symbol for AttributeSymbol {
         name: &str,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> bool {
-        self.get_attribute(name, data, module_info).is_some()
+        self.get_attribute(name, data, module_info, main_pkg)
+            .is_some()
     }
 
     fn simple_dump(&self) -> String {
@@ -1252,6 +1279,7 @@ impl Symbol for PackageSymbol {
         name: &str,
         _data: &Self::SymbolData,
         _module_info: Option<&ModuleInfo>,
+        _main_pkg: &String,
     ) -> Option<SymbolRef> {
         self.members.get(name).cloned()
     }
@@ -1260,6 +1288,7 @@ impl Symbol for PackageSymbol {
         &self,
         _data: &Self::SymbolData,
         _module_info: Option<&ModuleInfo>,
+        _main_pkg: &String,
     ) -> Vec<SymbolRef> {
         let mut result = vec![];
         for member in self.members.values() {
@@ -1273,6 +1302,7 @@ impl Symbol for PackageSymbol {
         name: &str,
         _data: &Self::SymbolData,
         _module_info: Option<&ModuleInfo>,
+        _main_pkg: &String,
     ) -> bool {
         self.members.contains_key(name)
     }
@@ -1372,21 +1402,23 @@ impl Symbol for TypeAliasSymbol {
         name: &str,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> Option<SymbolRef> {
         let ty = self.sema_info.ty.as_ref()?;
-        data.get_type_attribute(ty, name, module_info)
+        data.get_type_attribute(ty, name, module_info, main_pkg)
     }
 
     fn get_all_attributes(
         &self,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> Vec<SymbolRef> {
         let mut result = vec![];
         if let Some(ty) = self.sema_info.ty.as_ref() {
-            if let Some(symbol_ref) = data.get_type_symbol(ty, module_info) {
+            if let Some(symbol_ref) = data.get_type_symbol(ty, module_info, main_pkg) {
                 if let Some(symbol) = data.get_symbol(symbol_ref) {
-                    result.append(&mut symbol.get_all_attributes(data, module_info))
+                    result.append(&mut symbol.get_all_attributes(data, module_info, main_pkg))
                 }
             }
         }
@@ -1398,8 +1430,10 @@ impl Symbol for TypeAliasSymbol {
         name: &str,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> bool {
-        self.get_attribute(name, data, module_info).is_some()
+        self.get_attribute(name, data, module_info, main_pkg)
+            .is_some()
     }
 
     fn simple_dump(&self) -> String {
@@ -1496,6 +1530,7 @@ impl Symbol for RuleSymbol {
         _name: &str,
         _data: &Self::SymbolData,
         _module_info: Option<&ModuleInfo>,
+        _main_pkg: &String,
     ) -> Option<SymbolRef> {
         None
     }
@@ -1504,6 +1539,7 @@ impl Symbol for RuleSymbol {
         &self,
         _data: &Self::SymbolData,
         _module_info: Option<&ModuleInfo>,
+        _main_pkg: &String,
     ) -> Vec<SymbolRef> {
         vec![]
     }
@@ -1513,6 +1549,7 @@ impl Symbol for RuleSymbol {
         _name: &str,
         _data: &Self::SymbolData,
         _module_info: Option<&ModuleInfo>,
+        _main_pkg: &String,
     ) -> bool {
         false
     }
@@ -1623,19 +1660,21 @@ impl Symbol for UnresolvedSymbol {
         name: &str,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> Option<SymbolRef> {
         data.get_symbol(self.def?)?
-            .get_attribute(name, data, module_info)
+            .get_attribute(name, data, module_info, main_pkg)
     }
 
     fn get_all_attributes(
         &self,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> Vec<SymbolRef> {
         if let Some(def) = self.def {
             if let Some(def_symbol) = data.get_symbol(def) {
-                return def_symbol.get_all_attributes(data, module_info);
+                return def_symbol.get_all_attributes(data, module_info, main_pkg);
             }
         }
         vec![]
@@ -1646,8 +1685,10 @@ impl Symbol for UnresolvedSymbol {
         name: &str,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> bool {
-        self.get_attribute(name, data, module_info).is_some()
+        self.get_attribute(name, data, module_info, main_pkg)
+            .is_some()
     }
 
     fn simple_dump(&self) -> String {
@@ -1698,16 +1739,16 @@ impl UnresolvedSymbol {
         }
     }
 
-    pub fn get_fully_qualified_name(&self, module_info: &ModuleInfo) -> String {
+    pub fn get_fully_qualified_name(&self, module_info: &ModuleInfo, main_pkg: &String) -> String {
         let names: Vec<_> = self.name.split('.').collect();
         let pkg_path = if names.len() == 1 {
-            kclvm_ast::MAIN_PKG.to_string()
+            main_pkg.clone()
         } else {
             let pkg_alias = names.first().unwrap();
             let import_info = module_info.get_import_info(*pkg_alias);
             match import_info {
                 Some(info) => info.fully_qualified_name.clone(),
-                None => kclvm_ast::MAIN_PKG.to_string(),
+                None => main_pkg.clone(),
             }
         };
 
@@ -1758,20 +1799,22 @@ impl Symbol for ExpressionSymbol {
         name: &str,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> Option<SymbolRef> {
-        data.get_type_attribute(self.sema_info.ty.as_ref()?, name, module_info)
+        data.get_type_attribute(self.sema_info.ty.as_ref()?, name, module_info, main_pkg)
     }
 
     fn get_all_attributes(
         &self,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> Vec<SymbolRef> {
         let mut result = vec![];
         if let Some(ty) = self.sema_info.ty.as_ref() {
-            if let Some(symbol_ref) = data.get_type_symbol(ty, module_info) {
+            if let Some(symbol_ref) = data.get_type_symbol(ty, module_info, main_pkg) {
                 if let Some(symbol) = data.get_symbol(symbol_ref) {
-                    result.append(&mut symbol.get_all_attributes(data, module_info))
+                    result.append(&mut symbol.get_all_attributes(data, module_info, main_pkg))
                 }
             }
         }
@@ -1784,8 +1827,10 @@ impl Symbol for ExpressionSymbol {
         name: &str,
         data: &Self::SymbolData,
         module_info: Option<&ModuleInfo>,
+        main_pkg: &String,
     ) -> bool {
-        self.get_attribute(name, data, module_info).is_some()
+        self.get_attribute(name, data, module_info, main_pkg)
+            .is_some()
     }
     fn simple_dump(&self) -> String {
         let mut output = "{\n".to_string();
@@ -1881,6 +1926,7 @@ impl Symbol for CommentSymbol {
         _name: &str,
         _data: &Self::SymbolData,
         _module_info: Option<&ModuleInfo>,
+        _main_pkg: &String,
     ) -> Option<SymbolRef> {
         None
     }
@@ -1890,6 +1936,7 @@ impl Symbol for CommentSymbol {
         _name: &str,
         _data: &Self::SymbolData,
         _module_info: Option<&ModuleInfo>,
+        _main_pkg: &String,
     ) -> bool {
         false
     }
@@ -1898,6 +1945,7 @@ impl Symbol for CommentSymbol {
         &self,
         _data: &Self::SymbolData,
         _module_info: Option<&ModuleInfo>,
+        _main_pkg: &String,
     ) -> Vec<SymbolRef> {
         vec![]
     }
@@ -1989,6 +2037,7 @@ impl Symbol for DecoratorSymbol {
         _name: &str,
         _data: &Self::SymbolData,
         _module_info: Option<&ModuleInfo>,
+        _main_pkg: &String,
     ) -> Option<SymbolRef> {
         None
     }
@@ -1998,6 +2047,7 @@ impl Symbol for DecoratorSymbol {
         _name: &str,
         _data: &Self::SymbolData,
         _module_info: Option<&ModuleInfo>,
+        _main_pkg: &String,
     ) -> bool {
         false
     }
@@ -2006,6 +2056,7 @@ impl Symbol for DecoratorSymbol {
         &self,
         _data: &Self::SymbolData,
         _module_info: Option<&ModuleInfo>,
+        _main_pkg: &String,
     ) -> Vec<SymbolRef> {
         vec![]
     }

@@ -18,7 +18,7 @@ use compiler_base_session::Session;
 use compiler_base_span::span::new_byte_pos;
 use file_graph::FileGraph;
 use indexmap::{IndexMap, IndexSet};
-use kclvm_ast::ast;
+use kclvm_ast::{ast, DEFAULT_MAIN_PKG};
 use kclvm_config::modfile::{get_vendor_home, KCL_FILE_EXTENSION, KCL_FILE_SUFFIX, KCL_MOD_FILE};
 use kclvm_error::diagnostic::{Diagnostic, Range};
 use kclvm_error::{ErrorKind, Message, Position, Style};
@@ -114,6 +114,7 @@ pub fn parse_file(filename: &str, code: Option<String>) -> Result<ParseFileResul
             ..Default::default()
         }),
         None,
+        None,
     );
     let result = loader.load_main()?;
     let module = match result.program.get_main_package_first_module() {
@@ -139,9 +140,13 @@ pub fn parse_file(filename: &str, code: Option<String>) -> Result<ParseFileResul
 }
 
 /// Parse a KCL file to the AST module and return errors when meets parse errors as result.
-pub fn parse_file_force_errors(filename: &str, code: Option<String>) -> Result<ast::Module> {
+pub fn parse_file_force_errors(
+    filename: &str,
+    code: Option<String>,
+    main_pkg: Option<String>,
+) -> Result<ast::Module> {
     let sess = Arc::new(ParseSession::default());
-    let result = parse_file_with_global_session(sess.clone(), filename, code);
+    let result = parse_file_with_global_session(sess.clone(), filename, code, main_pkg);
     if sess.0.diag_handler.has_errors()? {
         let err = sess
             .0
@@ -158,6 +163,7 @@ pub fn parse_file_with_session(
     sess: ParseSessionRef,
     filename: &str,
     code: Option<String>,
+    main_pkg: Option<String>,
 ) -> Result<ast::Module> {
     // Code source.
     let src = if let Some(s) = code {
@@ -194,8 +200,16 @@ pub fn parse_file_with_session(
     let mut p = parser::Parser::new(&sess, stream);
     let mut m = p.parse_module();
     m.filename = filename.to_string();
-    m.pkg = kclvm_ast::MAIN_PKG.to_string();
-    m.name = kclvm_ast::MAIN_PKG.to_string();
+    match main_pkg {
+        Some(main_pkg) => {
+            m.pkg = main_pkg.clone();
+            m.name = main_pkg.clone();
+        }
+        None => {
+            m.pkg = DEFAULT_MAIN_PKG.to_string();
+            m.name = DEFAULT_MAIN_PKG.to_string();
+        }
+    }
 
     Ok(m)
 }
@@ -206,8 +220,9 @@ pub fn parse_file_with_global_session(
     sess: ParseSessionRef,
     filename: &str,
     code: Option<String>,
+    main_pkg: Option<String>,
 ) -> Result<ast::Module> {
-    create_session_globals_then(move || parse_file_with_session(sess, filename, code))
+    create_session_globals_then(move || parse_file_with_session(sess, filename, code, main_pkg))
 }
 
 /// Parse a source string to a expression. When input empty string, it will return [None].
@@ -303,8 +318,9 @@ pub fn load_program(
     paths: &[&str],
     opts: Option<LoadProgramOptions>,
     module_cache: Option<KCLModuleCache>,
+    main_pkg: Option<String>,
 ) -> Result<LoadProgramResult> {
-    Loader::new(sess, paths, opts, module_cache).load_main()
+    Loader::new(sess, paths, opts, module_cache, main_pkg).load_main()
 }
 
 pub type KCLModuleCache = Arc<RwLock<IndexMap<String, ast::Module>>>;
@@ -315,6 +331,7 @@ struct Loader {
     missing_pkgs: Vec<String>,
     module_cache: Option<KCLModuleCache>,
     file_graph: FileGraph,
+    main_pkg: String,
 }
 
 impl Loader {
@@ -323,6 +340,7 @@ impl Loader {
         paths: &[&str],
         opts: Option<LoadProgramOptions>,
         module_cache: Option<Arc<RwLock<IndexMap<String, ast::Module>>>>,
+        main_pkg: Option<String>,
     ) -> Self {
         Self {
             sess,
@@ -331,6 +349,7 @@ impl Loader {
             module_cache,
             missing_pkgs: Default::default(),
             file_graph: FileGraph::default(),
+            main_pkg: main_pkg.unwrap_or(DEFAULT_MAIN_PKG.to_string()),
         }
     }
 
@@ -340,7 +359,8 @@ impl Loader {
     }
 
     fn _load_main(&mut self) -> Result<LoadProgramResult> {
-        let compile_entries = get_compile_entries_from_paths(&self.paths, &self.opts)?;
+        let compile_entries =
+            get_compile_entries_from_paths(&self.paths, &self.opts, &self.main_pkg)?;
         let workdir = compile_entries.get_root_path().to_string();
         let mut pkgs = HashMap::new();
         let mut pkg_files = Vec::new();
@@ -356,19 +376,25 @@ impl Loader {
                         self.sess.clone(),
                         filename,
                         maybe_k_codes[i].clone(),
+                        Some(self.main_pkg.clone()),
                     )?;
                     let mut module_cache_ref = module_cache.write().unwrap();
                     module_cache_ref.insert(filename.clone(), m.clone());
                     m
                 } else {
-                    parse_file_with_session(self.sess.clone(), filename, maybe_k_codes[i].clone())?
+                    parse_file_with_session(
+                        self.sess.clone(),
+                        filename,
+                        maybe_k_codes[i].clone(),
+                        Some(self.main_pkg.clone()),
+                    )?
                 };
                 fix_rel_import_path(entry.path(), &mut m);
                 pkg_files.push(m);
             }
 
             // Insert an empty vec to determine whether there is a circular import.
-            pkgs.insert(kclvm_ast::MAIN_PKG.to_string(), vec![]);
+            pkgs.insert(self.main_pkg.clone(), vec![]);
             self.load_import_package(
                 entry.path(),
                 entry.name().to_string(),
@@ -377,10 +403,11 @@ impl Loader {
             )?;
         }
         // Insert the complete ast to replace the empty list.
-        pkgs.insert(kclvm_ast::MAIN_PKG.to_string(), pkg_files);
+        pkgs.insert(self.main_pkg.clone(), pkg_files);
         let program = ast::Program {
             root: workdir,
             pkgs,
+            main_pkg: self.main_pkg.clone(),
         };
         // Return the files in the order they should be compiled
         let paths = match self.file_graph.toposort() {
@@ -611,14 +638,24 @@ impl Loader {
                 if let Some(module) = module_cache_ref.get(&filename) {
                     module.clone()
                 } else {
-                    let m = parse_file_with_session(self.sess.clone(), &filename, None)?;
+                    let m = parse_file_with_session(
+                        self.sess.clone(),
+                        &filename,
+                        None,
+                        Some(self.main_pkg.clone()),
+                    )?;
                     drop(module_cache_ref);
                     let mut module_cache_ref = module_cache.write().unwrap();
                     module_cache_ref.insert(filename.clone(), m.clone());
                     m
                 }
             } else {
-                parse_file_with_session(self.sess.clone(), &filename, None)?
+                parse_file_with_session(
+                    self.sess.clone(),
+                    &filename,
+                    None,
+                    Some(self.main_pkg.clone()),
+                )?
             };
 
             m.pkg = pkg_info.pkg_path.clone();
@@ -736,7 +773,7 @@ impl Loader {
     ) -> Result<Option<PkgInfo>> {
         match self.pkg_exists(vec![pkg_root.to_string()], pkg_path) {
             Some(internal_pkg_root) => {
-                let fullpath = if pkg_name == kclvm_ast::MAIN_PKG {
+                let fullpath = if pkg_name == self.main_pkg {
                     pkg_path.to_string()
                 } else {
                     format!("{}.{}", pkg_name, pkg_path)

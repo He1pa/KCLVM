@@ -116,7 +116,7 @@ impl<'ctx> Namer<'ctx> {
                     .to_str()
                     .unwrap()
                     .to_string();
-                if name == kclvm_ast::MAIN_PKG {
+                if name == &program.main_pkg {
                     real_path = program.root.clone()
                 }
                 let pkg_pos = Position {
@@ -273,6 +273,7 @@ mod tests {
         let program = load_program(
             sess.clone(),
             &["./src/namer/test_data/schema_symbols.k"],
+            None,
             None,
             None,
         )

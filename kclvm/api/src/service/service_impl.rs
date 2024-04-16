@@ -103,6 +103,7 @@ impl KclvmServiceImpl {
                 ..Default::default()
             }),
             Some(KCLModuleCache::default()),
+            None,
         )?;
         let ast_json = serde_json::to_string(&result.program)?;
 

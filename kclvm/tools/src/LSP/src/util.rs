@@ -107,7 +107,7 @@ pub(crate) fn compile_with_params(
     match panic::catch_unwind(move || {
         // Parser
         let sess = ParseSessionRef::default();
-        let mut program = load_program(sess.clone(), &files, Some(opt), params.module_cache)
+        let mut program = load_program(sess.clone(), &files, Some(opt), params.module_cache, None)
             .unwrap()
             .program;
         // Resolver

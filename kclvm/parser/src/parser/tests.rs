@@ -3,7 +3,7 @@ use regex::Regex;
 
 #[test]
 fn test_parse_file_not_found() {
-    match parse_file_force_errors("The file path is invalid", None) {
+    match parse_file_force_errors("The file path is invalid", None, None) {
         Ok(_) => {
             panic!("unreachable")
         }

@@ -4,7 +4,7 @@ use crate::{
 };
 use indexmap::{IndexMap, IndexSet};
 use kclvm_ast::ast;
-use kclvm_runtime::{ValueRef, _kclvm_get_fn_ptr_by_name, MAIN_PKG_PATH};
+use kclvm_runtime::{ValueRef, _kclvm_get_fn_ptr_by_name};
 use kclvm_sema::{builtin, plugin};
 
 use crate::{Evaluator, GLOBAL_LEVEL};
@@ -374,12 +374,13 @@ impl<'ctx> Evaluator<'ctx> {
     /// Get the variable value named `name` from the scope named `pkgpath`, return Err when not found
     pub fn get_variable_in_pkgpath(&self, name: &str, pkgpath: &str) -> ValueRef {
         let pkg_scopes = self.pkg_scopes.borrow();
-        let pkgpath =
-            if !pkgpath.starts_with(kclvm_runtime::PKG_PATH_PREFIX) && pkgpath != MAIN_PKG_PATH {
-                format!("{}{}", kclvm_runtime::PKG_PATH_PREFIX, pkgpath)
-            } else {
-                pkgpath.to_string()
-            };
+        let pkgpath = if !pkgpath.starts_with(kclvm_runtime::PKG_PATH_PREFIX)
+            && pkgpath != self.program.main_pkg
+        {
+            format!("{}{}", kclvm_runtime::PKG_PATH_PREFIX, pkgpath)
+        } else {
+            pkgpath.to_string()
+        };
         let mut result = self.undefined_value();
         // System module
         if builtin::STANDARD_SYSTEM_MODULE_NAMES_WITH_AT.contains(&pkgpath.as_str()) {

@@ -7,9 +7,12 @@ use kclvm_parser::{load_program, parse_file_force_errors, ParseSession};
 
 #[test]
 fn test_fix_qualified_identifier() {
-    let mut module =
-        parse_file_force_errors("./src/pre_process/test_data/qualified_identifier.k", None)
-            .unwrap();
+    let mut module = parse_file_force_errors(
+        "./src/pre_process/test_data/qualified_identifier.k",
+        None,
+        None,
+    )
+    .unwrap();
     fix_qualified_identifier(&mut module, &mut IndexMap::default());
     if let ast::Stmt::Assign(assign_stmt) = &module.body[1].node {
         if let ast::Expr::Identifier(identifier) = &assign_stmt.value.node {
@@ -25,7 +28,8 @@ fn test_fix_qualified_identifier() {
 #[test]
 fn test_fix_raw_identifier_prefix() {
     let mut module =
-        parse_file_force_errors("./src/pre_process/test_data/raw_identifier.k", None).unwrap();
+        parse_file_force_errors("./src/pre_process/test_data/raw_identifier.k", None, None)
+            .unwrap();
     if let ast::Stmt::Assign(assign_stmt) = &module.body[0].node {
         assert_eq!(assign_stmt.targets[0].node.names[0].node, "$schema")
     } else {
@@ -57,7 +61,7 @@ fn test_fix_raw_identifier_prefix() {
 fn test_transform_multi_assign() {
     let targets = ["a", "b", "c", "d"];
     let mut module =
-        parse_file_force_errors("./src/pre_process/test_data/multi_assign.k", None).unwrap();
+        parse_file_force_errors("./src/pre_process/test_data/multi_assign.k", None, None).unwrap();
     if let ast::Stmt::Assign(assign_stmt) = &module.body[1].node {
         assert_eq!(assign_stmt.targets.len(), targets.len());
         for (i, target) in targets.iter().enumerate() {
@@ -90,11 +94,12 @@ fn test_config_merge() {
         ],
         None,
         None,
+        None,
     )
     .unwrap()
     .program;
     merge_program(&mut program);
-    let modules = program.pkgs.get_mut(kclvm_ast::MAIN_PKG).unwrap();
+    let modules = program.pkgs.get_mut(&program.main_pkg).unwrap();
     assert_eq!(modules.len(), 4);
     // Test the module merge result
     let module = modules.last().unwrap();
@@ -133,11 +138,12 @@ fn test_config_override() {
         &["./src/pre_process/test_data/config_override.k"],
         None,
         None,
+        None,
     )
     .unwrap()
     .program;
     merge_program(&mut program);
-    let modules = program.pkgs.get_mut(kclvm_ast::MAIN_PKG).unwrap();
+    let modules = program.pkgs.get_mut(&program.main_pkg).unwrap();
     assert_eq!(modules.len(), 1);
     // Test the module merge result
     let module = modules.first().unwrap();
@@ -178,12 +184,13 @@ fn test_skip_merge_program() {
         ],
         None,
         None,
+        None,
     )
     .unwrap()
     .program;
     // skip merge program and save raw config ast node
     // merge_program(&mut program);
-    let modules = program.pkgs.get_mut(kclvm_ast::MAIN_PKG).unwrap();
+    let modules = program.pkgs.get_mut(&program.main_pkg).unwrap();
     assert_eq!(modules.len(), 3);
     let config1 = &modules[1];
     let config2 = &modules[1];

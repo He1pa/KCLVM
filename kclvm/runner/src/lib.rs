@@ -4,7 +4,7 @@ use anyhow::{anyhow, bail, Result};
 use assembler::KclvmLibAssembler;
 use kclvm_ast::{
     ast::{Module, Program},
-    MAIN_PKG,
+    DEFAULT_MAIN_PKG,
 };
 use kclvm_driver::{canonicalize_input_files, expand_input_files};
 use kclvm_parser::{load_program, KCLModuleCache, ParseSessionRef};
@@ -84,6 +84,7 @@ pub fn exec_program(sess: ParseSessionRef, args: &ExecProgramArgs) -> Result<Exe
         kcl_paths_str.as_slice(),
         Some(opts),
         Some(module_cache),
+        None,
     )?
     .program;
     apply_overrides(
@@ -234,14 +235,15 @@ pub fn execute(
 ///
 /// **Note that it is not thread safe.**
 pub fn execute_module(mut m: Module) -> Result<ExecProgramResult> {
-    m.pkg = MAIN_PKG.to_string();
+    m.pkg = DEFAULT_MAIN_PKG.to_string();
 
     let mut pkgs = HashMap::new();
-    pkgs.insert(MAIN_PKG.to_string(), vec![m]);
+    pkgs.insert(DEFAULT_MAIN_PKG.to_string(), vec![m]);
 
     let prog = Program {
-        root: MAIN_PKG.to_string(),
+        root: DEFAULT_MAIN_PKG.to_string(),
         pkgs,
+        main_pkg: DEFAULT_MAIN_PKG.to_string(),
     };
 
     execute(
@@ -261,8 +263,14 @@ pub fn build_program<P: AsRef<Path>>(
     let opts = args.get_load_program_options();
     let kcl_paths = expand_files(args)?;
     let kcl_paths_str = kcl_paths.iter().map(|s| s.as_str()).collect::<Vec<&str>>();
-    let mut program =
-        load_program(sess.clone(), kcl_paths_str.as_slice(), Some(opts), None)?.program;
+    let mut program = load_program(
+        sess.clone(),
+        kcl_paths_str.as_slice(),
+        Some(opts),
+        None,
+        None,
+    )?
+    .program;
     // Resolve program.
     let scope = resolve_program(&mut program);
     // Emit parse and resolve errors if exists.

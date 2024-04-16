@@ -167,7 +167,11 @@ impl<'ctx> MutSelfTypedResultWalker<'ctx> for AdvancedResolver<'ctx> {
         let schema_symbol = self
             .gs
             .get_symbols()
-            .get_type_symbol(&schema_ty, self.get_current_module_info())
+            .get_type_symbol(
+                &schema_ty,
+                self.get_current_module_info(),
+                &self.get_prog_main_pkg(),
+            )
             .unwrap();
 
         if self
@@ -341,10 +345,11 @@ impl<'ctx> MutSelfTypedResultWalker<'ctx> for AdvancedResolver<'ctx> {
             .node_ty_map
             .get(&self.ctx.get_node_key(&rule_stmt.name.id))?
             .clone();
-        let rule_symbol = self
-            .gs
-            .get_symbols()
-            .get_type_symbol(&rule_ty, self.get_current_module_info())?;
+        let rule_symbol = self.gs.get_symbols().get_type_symbol(
+            &rule_ty,
+            self.get_current_module_info(),
+            &self.get_prog_main_pkg(),
+        )?;
         if let Some(symbol) = self
             .gs
             .get_symbols_mut()
@@ -505,6 +510,7 @@ impl<'ctx> MutSelfTypedResultWalker<'ctx> for AdvancedResolver<'ctx> {
                 &parent_ty,
                 &name.node,
                 self.get_current_module_info(),
+                self.get_prog_main_pkg(),
             )?;
 
             let (start_pos, end_pos): Range = name.get_span_pos();
@@ -661,10 +667,11 @@ impl<'ctx> MutSelfTypedResultWalker<'ctx> for AdvancedResolver<'ctx> {
             .node_ty_map
             .get(&self.ctx.get_node_key(&schema_expr.name.id))?
             .clone();
-        let schema_symbol = self
-            .gs
-            .get_symbols()
-            .get_type_symbol(&schema_ty, self.get_current_module_info())?;
+        let schema_symbol = self.gs.get_symbols().get_type_symbol(
+            &schema_ty,
+            self.get_current_module_info(),
+            self.get_prog_main_pkg(),
+        )?;
         self.ctx.current_schema_symbol = Some(schema_symbol);
         self.expr(&schema_expr.config);
         self.do_arguments_symbol_resolve(&schema_expr.args, &schema_expr.kwargs);
@@ -846,6 +853,7 @@ impl<'ctx> AdvancedResolver<'ctx> {
             cur_scope,
             self.get_current_module_info(),
             self.ctx.maybe_def,
+            &self.get_prog_main_pkg(),
         );
         if first_symbol.is_none() {
             //maybe import package symbol
@@ -914,6 +922,7 @@ impl<'ctx> AdvancedResolver<'ctx> {
                             &parent_ty,
                             &name.node,
                             self.get_current_module_info(),
+                            &self.get_prog_main_pkg(),
                         )?;
 
                         let (start_pos, end_pos): Range = name.get_span_pos();
@@ -1185,8 +1194,11 @@ impl<'ctx> AdvancedResolver<'ctx> {
             if let Some(node_key) = symbols.symbols_info.symbol_node_map.get(&def_symbol_ref) {
                 if let Some(def_ty) = self.ctx.node_ty_map.get(node_key) {
                     if let Some(ty) = get_possible_schema_ty(def_ty.clone()) {
-                        self.ctx.current_schema_symbol =
-                            self.gs.get_symbols().get_type_symbol(&ty, None);
+                        self.ctx.current_schema_symbol = self.gs.get_symbols().get_type_symbol(
+                            &ty,
+                            None,
+                            self.get_prog_main_pkg(),
+                        );
                     }
                 }
             }
@@ -1219,5 +1231,9 @@ impl<'ctx> AdvancedResolver<'ctx> {
                 );
             }
         }
+    }
+
+    pub(crate) fn get_prog_main_pkg(&self) -> &String {
+        &self.ctx.program.main_pkg
     }
 }

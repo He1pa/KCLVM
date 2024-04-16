@@ -99,6 +99,7 @@ impl<'ctx> Resolver<'ctx> {
             import_names: self.ctx.import_names.clone(),
             node_ty_map: self.node_ty_map.clone(),
             handler: self.handler.clone(),
+            main_pkg: self.program.main_pkg.clone(),
         };
         self.lint_check_scope_map();
         for diag in &self.linter.handler.diagnostics {
@@ -182,17 +183,17 @@ pub fn resolve_program_with_opts(
         if let Ok(mut cached_scope) = cached_scope.try_lock() {
             cached_scope.update(program);
             resolver.scope_map = cached_scope.scope_map.clone();
-            resolver.scope_map.remove(kclvm_ast::MAIN_PKG);
+            resolver.scope_map.remove(&program.main_pkg);
             resolver.node_ty_map = cached_scope.node_ty_map.clone()
         }
     }
-    let scope = resolver.check_and_lint(kclvm_ast::MAIN_PKG);
+    let scope = resolver.check_and_lint(&program.main_pkg);
     if let Some(cached_scope) = cached_scope.as_ref() {
         if let Ok(mut cached_scope) = cached_scope.try_lock() {
             cached_scope.update(program);
             cached_scope.scope_map = scope.scope_map.clone();
             cached_scope.node_ty_map = scope.node_ty_map.clone();
-            cached_scope.scope_map.remove(kclvm_ast::MAIN_PKG);
+            cached_scope.scope_map.remove(&program.main_pkg);
         }
     }
 

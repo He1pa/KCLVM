@@ -36,7 +36,7 @@ fn read_data(data_name: &str) -> (String, String) {
             .to_string(),
     );
 
-    let module = parse_file_force_errors(filename.to_str().unwrap(), None);
+    let module = parse_file_force_errors(filename.to_str().unwrap(), None, None);
 
     let mut filename_expect = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     filename_expect.push(

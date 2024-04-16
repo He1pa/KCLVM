@@ -206,6 +206,7 @@ mod tests {
     use crate::namer::Namer;
     use crate::resolver;
 
+    use kclvm_ast::DEFAULT_MAIN_PKG;
     use kclvm_error::Position;
     use kclvm_parser::load_program;
     use kclvm_parser::ParseSession;
@@ -287,7 +288,7 @@ mod tests {
         let path = "src/advanced_resolver/test_data/schema_symbols.k"
             .to_string()
             .replace("/", &std::path::MAIN_SEPARATOR.to_string());
-        let mut program = load_program(sess.clone(), &[&path], None, None)
+        let mut program = load_program(sess.clone(), &[&path], None, None, None)
             .unwrap()
             .program;
         let gs = GlobalState::default();
@@ -1226,7 +1227,7 @@ mod tests {
         let path = "src/advanced_resolver/test_data/schema_symbols.k"
             .to_string()
             .replace("/", &std::path::MAIN_SEPARATOR.to_string());
-        let mut program = load_program(sess.clone(), &[&path], None, None)
+        let mut program = load_program(sess.clone(), &[&path], None, None, None)
             .unwrap()
             .program;
         let gs = GlobalState::default();
@@ -1303,7 +1304,7 @@ mod tests {
         let path = "src/advanced_resolver/test_data/schema_symbols.k"
             .to_string()
             .replace("/", &std::path::MAIN_SEPARATOR.to_string());
-        let mut program = load_program(sess.clone(), &[&path], None, None)
+        let mut program = load_program(sess.clone(), &[&path], None, None, None)
             .unwrap()
             .program;
         let gs = GlobalState::default();
@@ -1406,7 +1407,9 @@ mod tests {
                 })
                 .unwrap();
 
-            let all_defs = gs.get_all_defs_in_scope(scope_ref).unwrap();
+            let all_defs = gs
+                .get_all_defs_in_scope(scope_ref, &DEFAULT_MAIN_PKG.to_string())
+                .unwrap();
             assert_eq!(all_defs.len(), *def_num)
         }
     }

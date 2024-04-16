@@ -1,10 +1,10 @@
 use anyhow::bail;
 use compiler_base_session::Session;
 use indexmap::{IndexMap, IndexSet};
+use kclvm_ast::ast;
 use kclvm_ast::ast::NodeRef;
 use kclvm_ast::ast::Stmt;
 use kclvm_ast::ast::Stmt::Import;
-use kclvm_ast::{ast, MAIN_PKG};
 use kclvm_error::diagnostic::Range;
 use kclvm_error::{Handler, Level};
 use std::collections::HashMap;
@@ -286,6 +286,7 @@ pub struct ProgramScope {
     pub import_names: IndexMap<String, IndexMap<String, String>>,
     pub node_ty_map: NodeTyMap,
     pub handler: Handler,
+    pub main_pkg: String,
 }
 
 unsafe impl Send for ProgramScope {}
@@ -303,7 +304,7 @@ impl ProgramScope {
     /// Get the scope in the main package.
     #[inline]
     pub fn main_scope(&self) -> Option<&Rc<RefCell<Scope>>> {
-        self.scope_map.get(MAIN_PKG)
+        self.scope_map.get(&self.main_pkg)
     }
 
     /// Return diagnostic pretty string but do not abort if the session exists any diagnostic.
@@ -502,7 +503,7 @@ pub struct NodeKey {
 pub type NodeTyMap = IndexMap<NodeKey, TypeRef>;
 pub type KCLScopeCache = Arc<Mutex<CachedScope>>;
 
-/// For CachedScope, we assume that all changed files must be located in kclvm_ast::MAIN_PKG ,
+/// For CachedScope, we assume that all changed files must be located in program main pkg ,
 /// if this is not the case, please clear the cache directly
 #[derive(Debug, Clone, Default)]
 pub struct CachedScope {
@@ -532,7 +533,7 @@ impl DependencyGraph {
     pub fn update(&mut self, program: &ast::Program) -> Result<HashSet<String>, String> {
         let mut new_modules = HashMap::new();
         for (pkgpath, modules) in program.pkgs.iter() {
-            if pkgpath == kclvm_ast::MAIN_PKG {
+            if pkgpath == &program.main_pkg {
                 continue;
             }
             if !self.node_map.contains_key(pkgpath) {
@@ -562,7 +563,7 @@ impl DependencyGraph {
             self.add_new_module(new_module);
         }
         let mut invalidated_set = HashSet::new();
-        if let Some(main_modules) = program.pkgs.get(kclvm_ast::MAIN_PKG) {
+        if let Some(main_modules) = program.pkgs.get(&program.main_pkg) {
             for module in main_modules {
                 let result = self.invalidate_module(module)?;
                 for pkg in result {

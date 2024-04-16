@@ -9,6 +9,7 @@ use crate::ty::{Type, TypeKind};
 use anyhow::Result;
 use kclvm_ast::ast;
 use kclvm_ast::pos::ContainsPos;
+use kclvm_ast::DEFAULT_MAIN_PKG;
 use kclvm_error::*;
 use kclvm_parser::load_program;
 use kclvm_parser::parse_file_force_errors;
@@ -26,15 +27,16 @@ pub fn parse_program(filename: &str) -> Result<ast::Program> {
     let mut prog = ast::Program {
         root: abspath.parent().unwrap().adjust_canonicalization(),
         pkgs: HashMap::new(),
+        main_pkg: DEFAULT_MAIN_PKG.to_string(),
     };
 
-    let mut module = parse_file_force_errors(abspath.to_str().unwrap(), None)?;
+    let mut module = parse_file_force_errors(abspath.to_str().unwrap(), None, None)?;
     module.filename = filename.to_string();
-    module.pkg = kclvm_ast::MAIN_PKG.to_string();
-    module.name = kclvm_ast::MAIN_PKG.to_string();
+    module.pkg = kclvm_ast::DEFAULT_MAIN_PKG.to_string();
+    module.name = kclvm_ast::DEFAULT_MAIN_PKG.to_string();
 
     prog.pkgs
-        .insert(kclvm_ast::MAIN_PKG.to_string(), vec![module]);
+        .insert(kclvm_ast::DEFAULT_MAIN_PKG.to_string(), vec![module]);
 
     Ok(prog)
 }
@@ -106,6 +108,7 @@ fn test_pkg_init_in_schema_resolve() {
     let mut program = load_program(
         sess.clone(),
         &["./src/resolver/test_data/pkg_init_in_schema.k"],
+        None,
         None,
         None,
     )
@@ -186,6 +189,7 @@ fn test_resolve_program_redefine() {
         &["./src/resolver/test_fail_data/redefine_import/main.k"],
         None,
         None,
+        None,
     )
     .unwrap()
     .program;
@@ -226,6 +230,7 @@ fn test_resolve_program_cycle_reference_fail() {
         &["./src/resolver/test_fail_data/cycle_reference/file1.k"],
         None,
         None,
+        None,
     )
     .unwrap()
     .program;
@@ -251,6 +256,7 @@ fn test_record_used_module() {
     let mut program = load_program(
         sess.clone(),
         &["./src/resolver/test_data/record_used_module.k"],
+        None,
         None,
         None,
     )
@@ -373,6 +379,7 @@ fn test_lint() {
         &["./src/resolver/test_data/lint.k"],
         None,
         None,
+        None,
     )
     .unwrap()
     .program;
@@ -380,7 +387,7 @@ fn test_lint() {
     pre_process_program(&mut program, &opts);
     let mut resolver = Resolver::new(&program, opts);
     resolver.resolve_import();
-    resolver.check_and_lint(kclvm_ast::MAIN_PKG);
+    resolver.check_and_lint(kclvm_ast::DEFAULT_MAIN_PKG);
 
     let root = &program.root.clone();
     let filename = Path::new(&root.clone())
@@ -519,6 +526,7 @@ fn test_pkg_scope() {
         &["./src/resolver/test_data/pkg_scope.k"],
         None,
         None,
+        None,
     )
     .unwrap()
     .program;
@@ -570,6 +578,7 @@ fn test_system_package() {
         &["./src/resolver/test_data/system_package.k"],
         None,
         None,
+        None,
     )
     .unwrap()
     .program;
@@ -604,6 +613,7 @@ fn test_resolve_program_import_suggest() {
         &["./src/resolver/test_fail_data/not_found_suggest/main.k"],
         None,
         None,
+        None,
     )
     .unwrap()
     .program;
@@ -629,6 +639,7 @@ fn test_resolve_assignment_in_lambda() {
         &["./src/resolver/test_data/assign_in_lambda.k"],
         None,
         None,
+        None,
     )
     .unwrap()
     .program;
@@ -647,6 +658,7 @@ fn test_resolve_function_with_default_values() {
     let mut program = load_program(
         sess.clone(),
         &["./src/resolver/test_data/function_with_default_values.k"],
+        None,
         None,
         None,
     )
@@ -673,6 +685,7 @@ fn test_assignment_type_annotation_check_in_lambda() {
         &["./src/resolver/test_data/annotation_check_assignment.k"],
         Some(opts),
         None,
+        None,
     )
     .unwrap()
     .program;
@@ -686,6 +699,7 @@ fn test_resolve_lambda_assignment_diagnostic() {
     let mut program = load_program(
         sess.clone(),
         &["./src/resolver/test_fail_data/lambda_ty_error.k"],
+        None,
         None,
         None,
     )
@@ -710,6 +724,7 @@ fn test_ty_check_in_dict_assign_to_schema() {
         &["./src/resolver/test_data/attr_ty_check.k"],
         None,
         None,
+        None,
     )
     .unwrap()
     .program;
@@ -731,6 +746,7 @@ fn test_pkg_not_found_suggestion() {
     let mut program = load_program(
         sess.clone(),
         &["./src/resolver/test_data/pkg_not_found_suggestion.k"],
+        None,
         None,
         None,
     )
@@ -760,6 +776,7 @@ fn undef_lambda_param() {
     let mut program = load_program(
         sess.clone(),
         &["./src/resolver/test_data/undef_lambda_param.k"],
+        None,
         None,
         None,
     )
@@ -801,6 +818,7 @@ fn test_schema_params_count() {
         &["./src/resolver/test_data/schema_params_miss.k"],
         None,
         None,
+        None,
     )
     .unwrap()
     .program;
@@ -824,6 +842,7 @@ fn test_set_ty_in_lambda() {
     let mut program = load_program(
         sess.clone(),
         &["./src/resolver/test_data/ty_in_lambda.k"],
+        None,
         None,
         None,
     )
@@ -852,6 +871,7 @@ fn test_pkg_asname() {
         &["./src/resolver/test_data/pkg_asname/pkg_asname.k"],
         None,
         None,
+        None,
     )
     .unwrap()
     .program;
@@ -877,7 +897,7 @@ fn test_builtin_file_invalid() {
 
     for (file, expected_message) in &test_cases {
         let sess = Arc::new(ParseSession::default());
-        let mut program = load_program(sess.clone(), &[file], None, None)
+        let mut program = load_program(sess.clone(), &[file], None, None, None)
             .unwrap()
             .program;
         let scope = resolve_program(&mut program);

@@ -109,7 +109,7 @@ fn test_override_file_config() {
     cargo_file_path.push("src/test_data/config.k");
     let abs_path = cargo_file_path.to_str().unwrap();
 
-    let mut module = parse_file_force_errors(abs_path, None).unwrap();
+    let mut module = parse_file_force_errors(abs_path, None, None).unwrap();
     for o in &overrides {
         apply_override_on_module(&mut module, o, &import_paths).unwrap();
     }

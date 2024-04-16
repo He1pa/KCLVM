@@ -11,7 +11,7 @@ pub mod walker;
 #[cfg(test)]
 mod tests;
 
-pub const MAIN_PKG: &str = "__main__";
+pub const DEFAULT_MAIN_PKG: &str = "__main__";
 
 #[macro_export]
 macro_rules! node_ref {

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use kclvm_ast::MAIN_PKG;
+use kclvm_ast::ast::Program;
 use kclvm_error::Position;
 use kclvm_sema::core::global_state::GlobalState;
 use kclvm_sema::core::symbol::KCLSymbol;
@@ -11,6 +11,7 @@ use lsp_types::{DocumentSymbol, DocumentSymbolResponse, SymbolKind};
 use crate::to_lsp::lsp_pos;
 
 pub(crate) fn document_symbol(
+    program: &Program,
     file: &str,
     gs: &GlobalState,
 ) -> Option<lsp_types::DocumentSymbolResponse> {
@@ -21,8 +22,8 @@ pub(crate) fn document_symbol(
         line: 1,
         column: Some(0),
     };
-    if let Some(scope) = gs.get_scopes().get_root_scope(MAIN_PKG.to_owned()) {
-        if let Some(defs) = gs.get_all_defs_in_scope(scope) {
+    if let Some(scope) = gs.get_scopes().get_root_scope(program.main_pkg.clone()) {
+        if let Some(defs) = gs.get_all_defs_in_scope(scope, &program.main_pkg) {
             for symbol_ref in defs {
                 match gs.get_symbols().get_symbol(symbol_ref) {
                     Some(symbol) => {
@@ -45,6 +46,7 @@ pub(crate) fn document_symbol(
                                                         let attrs = symbol.get_all_attributes(
                                                             gs.get_symbols(),
                                                             module_info,
+                                                            &program.main_pkg,
                                                         );
                                                         let mut children = vec![];
 
@@ -180,9 +182,9 @@ mod tests {
     #[test]
     #[bench_test]
     fn document_symbol_test() {
-        let (file, _, _, gs) = compile_test_file("src/test_data/document_symbol.k");
+        let (file, prog, _, gs) = compile_test_file("src/test_data/document_symbol.k");
 
-        let mut res = document_symbol(file.as_str(), &gs).unwrap();
+        let mut res = document_symbol(&prog, file.as_str(), &gs).unwrap();
         let mut expect = vec![];
         expect.push(build_document_symbol(
             "Person4",

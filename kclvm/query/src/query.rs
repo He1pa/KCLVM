@@ -193,6 +193,7 @@ fn resolve_file(opts: &CompilationOptions) -> Result<Rc<RefCell<Scope>>> {
         &opts.k_files.iter().map(AsRef::as_ref).collect::<Vec<_>>(),
         opts.loader_opts.clone(),
         None,
+        None,
     ) {
         Ok(p) => p.program,
         Err(err) => {
