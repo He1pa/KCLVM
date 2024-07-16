@@ -1,9 +1,6 @@
 use crate::analysis::{Analysis, AnalysisDatabase, DocumentVersion};
-use crate::from_lsp::file_path_from_url;
 use crate::to_lsp::{kcl_diag_to_lsp_diags, url};
 use crate::util::{compile_with_params, get_file_name, to_json, Params};
-use crate::word_index::build_word_index;
-use anyhow::Result;
 use crossbeam_channel::{select, unbounded, Receiver, Sender};
 use kclvm_driver::toolchain::{self, Toolchain};
 use kclvm_driver::CompileUnitOptions;
@@ -12,10 +9,9 @@ use kclvm_sema::core::global_state::GlobalState;
 use kclvm_sema::resolver::scope::KCLScopeCache;
 use lsp_server::RequestId;
 use lsp_server::{ReqQueue, Request, Response};
-use lsp_types::Url;
 use lsp_types::{
     notification::{Notification, PublishDiagnostics},
-    Diagnostic, InitializeParams, Location, PublishDiagnosticsParams,
+    Diagnostic, InitializeParams, PublishDiagnosticsParams,
 };
 use parking_lot::RwLock;
 use ra_ap_vfs::{ChangeKind, ChangedFile, FileId, Vfs};
@@ -49,7 +45,6 @@ pub(crate) struct Handle<H, C> {
 }
 
 pub(crate) type KCLVfs = Arc<RwLock<Vfs>>;
-pub(crate) type KCLWordIndexMap = Arc<RwLock<HashMap<Url, HashMap<String, Vec<Location>>>>>;
 pub(crate) type KCLEntryCache =
     Arc<RwLock<HashMap<String, (CompileUnitOptions, Option<SystemTime>)>>>;
 pub(crate) type KCLToolChain = Arc<RwLock<dyn Toolchain>>;
@@ -79,8 +74,6 @@ pub(crate) struct LanguageServerState {
     pub loader: Handle<Box<dyn ra_ap_vfs::loader::Handle>, Receiver<ra_ap_vfs::loader::Message>>,
     /// request retry time
     pub request_retry: Arc<RwLock<HashMap<RequestId, i32>>>,
-    /// The word index map
-    pub word_index_map: KCLWordIndexMap,
     /// KCL parse cache
     pub module_cache: KCLModuleCache,
     /// KCL resolver cache
@@ -104,8 +97,6 @@ pub(crate) struct LanguageServerSnapshot {
     pub opened_files: Arc<RwLock<HashMap<FileId, DocumentVersion>>>,
     /// request retry time
     pub request_retry: Arc<RwLock<HashMap<RequestId, i32>>>,
-    /// The word index map
-    pub word_index_map: KCLWordIndexMap,
     /// KCL parse cache
     pub module_cache: KCLModuleCache,
     /// KCL resolver cache
@@ -139,7 +130,7 @@ impl LanguageServerState {
             shutdown_requested: false,
             analysis: Analysis::default(),
             opened_files: Arc::new(RwLock::new(HashMap::new())),
-            word_index_map: Arc::new(RwLock::new(HashMap::new())),
+            // word_index_map: Arc::new(RwLock::new(HashMap::new())),
             loader,
             module_cache: KCLModuleCache::default(),
             scope_cache: KCLScopeCache::default(),
@@ -149,12 +140,12 @@ impl LanguageServerState {
             request_retry: Arc::new(RwLock::new(HashMap::new())),
         };
 
-        let word_index_map = state.word_index_map.clone();
-        state.thread_pool.execute(move || {
-            if let Err(err) = update_word_index_state(word_index_map, initialize_params, true) {
-                log_message(err.to_string(), &task_sender);
-            }
-        });
+        // // let word_index_map = state.word_index_map.clone();
+        // state.thread_pool.execute(move || {
+        //     if let Err(err) = update_word_index_state(word_index_map, initialize_params, true) {
+        //         log_message(err.to_string(), &task_sender);
+        //     }
+        // });
 
         state
     }
@@ -381,7 +372,7 @@ impl LanguageServerState {
             vfs: self.vfs.clone(),
             db: self.analysis.db.clone(),
             opened_files: self.opened_files.clone(),
-            word_index_map: self.word_index_map.clone(),
+            // word_index_map: self.word_index_map.clone(),
             module_cache: self.module_cache.clone(),
             scope_cache: self.scope_cache.clone(),
             entry_cache: self.entry_cache.clone(),
@@ -410,26 +401,5 @@ pub(crate) fn log_message(message: String, sender: &Sender<Task>) -> anyhow::Res
         lsp_types::notification::LogMessage::METHOD.to_string(),
         lsp_types::LogMessageParams { typ, message },
     )))?;
-    Ok(())
-}
-
-fn update_word_index_state(
-    word_index_map: KCLWordIndexMap,
-    initialize_params: InitializeParams,
-    prune: bool,
-) -> Result<()> {
-    if let Some(workspace_folders) = initialize_params.workspace_folders {
-        for folder in workspace_folders {
-            let path = file_path_from_url(&folder.uri)?;
-            if let Ok(word_index) = build_word_index(&path, prune) {
-                word_index_map.write().insert(folder.uri, word_index);
-            }
-        }
-    } else if let Some(root_uri) = initialize_params.root_uri {
-        let path = file_path_from_url(&root_uri)?;
-        if let Ok(word_index) = build_word_index(path, prune) {
-            word_index_map.write().insert(root_uri, word_index);
-        }
-    }
     Ok(())
 }
