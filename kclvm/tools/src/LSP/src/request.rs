@@ -1,11 +1,12 @@
 use anyhow::anyhow;
 use crossbeam_channel::Sender;
 
+use kclvm_sema::info::is_valid_kcl_name;
 use lsp_server::RequestId;
 use lsp_types::{Location, SemanticTokensResult, TextEdit};
 use ra_ap_vfs::{AbsPathBuf, VfsPath};
-use std::sync::Arc;
 use std::time::Instant;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     analysis::{AnalysisDatabase, DocumentVersion},
@@ -385,64 +386,44 @@ pub(crate) fn handle_rename(
     params: lsp_types::RenameParams,
     sender: Sender<Task>,
 ) -> anyhow::Result<Option<lsp_types::WorkspaceEdit>> {
-    Ok(None)
     // // 1. check the new name validity
-    // let new_name = params.new_name;
-    // if !is_valid_kcl_name(new_name.as_str()) {
-    //     return Err(anyhow!("Can not rename to: {new_name}, invalid name"));
-    // }
+    let new_name = params.new_name;
+    if !is_valid_kcl_name(new_name.as_str()) {
+        return Err(anyhow!("Can not rename to: {new_name}, invalid name"));
+    }
 
     // // 2. find all the references of the symbol
-    // let file = file_path_from_url(&params.text_document_position.text_document.uri)?;
-    // let path = from_lsp::abs_path(&params.text_document_position.text_document.uri)?;
-    // if !snapshot.verify_request_path(&path.clone().into(), &sender) {
-    //     return Ok(None);
-    // }
-    // let db = match snapshot.get_db(&path.clone().into()) {
-    //     Ok(db) => db,
-    //     Err(_) => return Ok(None),
-    // };
-    // let kcl_pos = kcl_pos(&file, params.text_document_position.position);
-    // let log = |msg: String| log_message(msg, &sender);
-    // let references = find_refs(
-    //     &kcl_pos,
-    //     true,
-    //     snapshot.word_index_map.clone(),
-    //     Some(snapshot.vfs.clone()),
-    //     log,
-    //     &db.gs,
-    //     Some(snapshot.entry_cache),
-    // );
-    // match references {
-    //     Result::Ok(locations) => {
-    //         if locations.is_empty() {
-    //             let _ = log("Symbol not found".to_string());
-    //             anyhow::Ok(None)
-    //         } else {
-    //             // 3. return the workspaceEdit to rename all the references with the new name
-    //             let mut workspace_edit = lsp_types::WorkspaceEdit::default();
-
-    //             let changes = locations.into_iter().fold(
-    //                 HashMap::new(),
-    //                 |mut map: HashMap<lsp_types::Url, Vec<TextEdit>>, location| {
-    //                     let uri = location.uri;
-    //                     map.entry(uri.clone()).or_default().push(TextEdit {
-    //                         range: location.range,
-    //                         new_text: new_name.clone(),
-    //                     });
-    //                     map
-    //                 },
-    //             );
-    //             workspace_edit.changes = Some(changes);
-    //             anyhow::Ok(Some(workspace_edit))
-    //         }
-    //     }
-    //     Err(msg) => {
-    //         let err_msg = format!("Can not rename symbol: {msg}");
-    //         log(err_msg.clone())?;
-    //         Err(anyhow!(err_msg))
-    //     }
-    // }
+    let file = file_path_from_url(&params.text_document_position.text_document.uri)?;
+    let path = from_lsp::abs_path(&params.text_document_position.text_document.uri)?;
+    if !snapshot.verify_request_path(&path.clone().into(), &sender) {
+        return Ok(None);
+    }
+    let db = match snapshot.get_db(&path.clone().into()) {
+        Ok(db) => db,
+        Err(_) => return Ok(None),
+    };
+    let kcl_pos = kcl_pos(&file, params.text_document_position.position);
+    let references = find_refs(&kcl_pos, &db.gs);
+    match references {
+        Some(locations) => {
+            let mut workspace_edit = lsp_types::WorkspaceEdit::default();
+            let changes = locations.into_iter().fold(
+                HashMap::new(),
+                |mut map: HashMap<lsp_types::Url, Vec<TextEdit>>, location| {
+                    let uri = location.uri;
+                    map.entry(uri.clone()).or_default().push(TextEdit {
+                        range: location.range,
+                        new_text: new_name.clone(),
+                    });
+                    map
+                },
+            );
+            workspace_edit.changes = Some(changes);
+            return anyhow::Ok(Some(workspace_edit));
+        }
+        None => {}
+    }
+    Ok(None)
 }
 
 pub(crate) fn handle_inlay_hint(
