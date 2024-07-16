@@ -386,13 +386,13 @@ pub(crate) fn handle_rename(
     params: lsp_types::RenameParams,
     sender: Sender<Task>,
 ) -> anyhow::Result<Option<lsp_types::WorkspaceEdit>> {
-    // // 1. check the new name validity
+    // 1. check the new name validity
     let new_name = params.new_name;
     if !is_valid_kcl_name(new_name.as_str()) {
         return Err(anyhow!("Can not rename to: {new_name}, invalid name"));
     }
 
-    // // 2. find all the references of the symbol
+    // 2. find all the references of the symbol
     let file = file_path_from_url(&params.text_document_position.text_document.uri)?;
     let path = from_lsp::abs_path(&params.text_document_position.text_document.uri)?;
     if !snapshot.verify_request_path(&path.clone().into(), &sender) {

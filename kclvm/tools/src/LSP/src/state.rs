@@ -140,13 +140,6 @@ impl LanguageServerState {
             request_retry: Arc::new(RwLock::new(HashMap::new())),
         };
 
-        // // let word_index_map = state.word_index_map.clone();
-        // state.thread_pool.execute(move || {
-        //     if let Err(err) = update_word_index_state(word_index_map, initialize_params, true) {
-        //         log_message(err.to_string(), &task_sender);
-        //     }
-        // });
-
         state
     }
 
