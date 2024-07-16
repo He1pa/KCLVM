@@ -206,12 +206,14 @@ impl<'ctx> MutSelfTypedResultWalker<'ctx> for AdvancedResolver<'ctx> {
             Some(symbol) => symbol,
             None => return Ok(None),
         };
-        unresolved.def = Some(package_symbol);
         let unresolved_ref = self.gs.get_symbols_mut().alloc_unresolved_symbol(
             unresolved,
             self.ctx.get_node_key(&ast_id),
             self.ctx.current_pkgpath.clone().unwrap(),
         );
+        self.gs
+            .get_symbols_mut()
+            .set_def_and_ref(package_symbol, unresolved_ref);
         self.gs
             .get_symbols_mut()
             .symbols_info
@@ -640,6 +642,11 @@ impl<'ctx> MutSelfTypedResultWalker<'ctx> for AdvancedResolver<'ctx> {
                 self.ctx.get_node_key(&ast_id),
                 self.ctx.current_pkgpath.clone().unwrap(),
             );
+
+            self.gs
+                .get_symbols_mut()
+                .set_def_and_ref(def_symbol_ref, unresolved_ref);
+
             let cur_scope = *self.ctx.scopes.last().unwrap();
             self.gs
                 .get_scopes_mut()
@@ -1183,6 +1190,20 @@ impl<'ctx> AdvancedResolver<'ctx> {
                 }
 
                 if def_start_pos != start_pos || def_end_pos != end_pos {
+                    let ast_id = first_name.id.clone();
+                    let first_unresolved =
+                        UnresolvedSymbol::new(first_name.node.clone(), start_pos, end_pos, None, self.ctx.is_type_expr);
+                    let first_unresolved_ref = self.gs.get_symbols_mut().alloc_unresolved_symbol(
+                        first_unresolved,
+                        self.ctx.get_node_key(&ast_id),
+                        self.ctx.current_pkgpath.clone().unwrap(),
+                    );
+
+                    self.gs
+                        .get_symbols_mut()
+                        .set_def_and_ref(symbol_ref, first_unresolved_ref);
+
+                    let cur_scope = *self.ctx.scopes.last().unwrap();
                     self.gs
                         .get_scopes_mut()
                         .add_ref_to_scope(cur_scope, first_unresolved_ref);
@@ -1236,6 +1257,10 @@ impl<'ctx> AdvancedResolver<'ctx> {
                             self.ctx.get_node_key(&ast_id),
                             self.ctx.current_pkgpath.clone().unwrap(),
                         );
+
+                        self.gs
+                            .get_symbols_mut()
+                            .set_def_and_ref(def_symbol_ref, unresolved_ref);
 
                         let cur_scope = *self.ctx.scopes.last().unwrap();
                         self.gs
