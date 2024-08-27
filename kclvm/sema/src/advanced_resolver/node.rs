@@ -191,7 +191,7 @@ impl<'ctx> MutSelfTypedResultWalker<'ctx> for AdvancedResolver<'ctx> {
             .unwrap_or(import_stmt.path.clone())
             .get_span_pos();
 
-        let mut unresolved = UnresolvedSymbol::new(
+        let unresolved = UnresolvedSymbol::new(
             import_stmt.path.node.clone(),
             start_pos,
             end_pos,
