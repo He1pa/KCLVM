@@ -178,7 +178,6 @@ impl<'ctx> AdvancedResolver<'ctx> {
         }
 
         advanced_resolver.gs.build_sema_db();
-        advanced_resolver.gs.new_or_invalidate_pkgs.clear();
         Ok(())
     }
 

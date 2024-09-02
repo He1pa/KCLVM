@@ -1,5 +1,5 @@
 use crate::analysis::{Analysis, AnalysisDatabase, DBState, OpenFileInfo};
-use crate::compile::{compile, Params};
+use crate::compile::{partial_compile, Params};
 use crate::from_lsp::file_path_from_url;
 use crate::to_lsp::{kcl_diag_to_lsp_diags, url_from_path};
 use crate::util::{get_file_name, to_json};
@@ -533,7 +533,7 @@ impl LanguageServerState {
                 }
                 let start = Instant::now();
 
-                let (diags, compile_res) = compile(
+                let (diags, compile_res) = partial_compile(
                     Params {
                         file: filename.clone(),
                         module_cache: Some(module_cache),
@@ -634,7 +634,6 @@ impl LanguageServerState {
                     }
                     Err(e) => {
                         let mut workspaces = snapshot.workspaces.write();
-                        let mut temporary_workspace = snapshot.temporary_workspace.write();
                         log_message(
                             format!(
                                 "Workspace {:?} compile failed: {:?}",workspace, e
@@ -642,6 +641,7 @@ impl LanguageServerState {
                             &sender,
                         );
                         workspaces.insert(workspace, DBState::Failed(e.to_string()));
+                        drop(workspaces);
                         if temp && changed_file_id.is_some() {
                             let mut temporary_workspace = snapshot.temporary_workspace.write();
                             log_message(

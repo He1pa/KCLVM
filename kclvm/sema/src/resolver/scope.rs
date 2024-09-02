@@ -533,10 +533,6 @@ pub struct CachedScope {
     pub scope_map: IndexMap<String, Rc<RefCell<Scope>>>,
     pub schema_mapping: IndexMap<String, Arc<RefCell<SchemaType>>>,
     pub node_ty_map: NodeTyMap,
-    pub invalidate_pkgs: HashSet<String>,
-    /// Specify the invalid module in the program packages, used for invalidate_module().
-    /// If it is None, all modules in the main package will be invalidated
-    pub invalidate_pkg_modules: Option<HashSet<String>>,
     dependency_graph: DependencyGraph,
 }
 
@@ -564,9 +560,6 @@ impl DependencyGraph {
     ) -> Result<HashSet<String>, String> {
         let mut new_modules = HashMap::new();
         for (pkgpath, modules) in program.pkgs.iter() {
-            if pkgpath == kclvm_ast::MAIN_PKG {
-                continue;
-            }
             if !self.node_map.contains_key(pkgpath) {
                 self.node_map.insert(
                     pkgpath.to_string(),
@@ -713,19 +706,13 @@ struct DependencyNode {
 
 impl CachedScope {
     pub fn new(scope: &ProgramScope, program: &ast::Program) -> Self {
-        let mut cached_scope = Self {
+        let cached_scope = Self {
             program_root: program.root.to_string(),
             scope_map: scope.scope_map.clone(),
             node_ty_map: scope.node_ty_map.borrow().clone(),
-            invalidate_pkgs: HashSet::default(),
             dependency_graph: DependencyGraph::default(),
             schema_mapping: scope.schema_mapping.clone(),
-            invalidate_pkg_modules: None,
         };
-        let invalidated_pkgs = cached_scope
-            .dependency_graph
-            .update(program, &cached_scope.invalidate_pkg_modules);
-        cached_scope.invalidate_cache(invalidated_pkgs.as_ref());
         cached_scope
     }
 
@@ -733,8 +720,6 @@ impl CachedScope {
         self.scope_map.clear();
         self.node_ty_map.clear();
         self.dependency_graph.clear();
-        self.invalidate_pkgs.clear();
-        self.invalidate_pkg_modules = None;
     }
 
     pub fn invalidate_cache(&mut self, invalidated_pkgs: Result<&HashSet<String>, &String>) {
@@ -743,20 +728,28 @@ impl CachedScope {
                 for invalidated_pkg in invalidated_pkgs.iter() {
                     self.scope_map.remove(invalidated_pkg);
                 }
-                self.invalidate_pkgs = invalidated_pkgs.clone();
             }
             Err(_) => self.clear(),
         }
     }
 
-    pub fn update(&mut self, program: &ast::Program) {
+    pub fn update(
+        &mut self,
+        program: &ast::Program,
+        invalidate_pkg_modules: &Option<HashSet<String>>,
+    ) -> HashSet<String> {
         if self.program_root != program.root {
             self.clear();
             self.program_root = program.root.clone();
         }
         let invalidated_pkgs = self
             .dependency_graph
-            .update(program, &self.invalidate_pkg_modules);
+            .update(program, invalidate_pkg_modules);
         self.invalidate_cache(invalidated_pkgs.as_ref());
+        if let Ok(pkgs) = invalidated_pkgs {
+            pkgs
+        } else {
+            HashSet::new()
+        }
     }
 }

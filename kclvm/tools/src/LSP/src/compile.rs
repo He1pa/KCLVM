@@ -5,8 +5,8 @@ use kclvm_ast::ast::Program;
 use kclvm_driver::{lookup_compile_workspace, toolchain};
 use kclvm_error::Diagnostic;
 use kclvm_parser::{
-    entry::get_normalized_k_files_from_paths, load_program, KCLModuleCache, LoadProgramOptions,
-    ParseSessionRef,
+    entry::get_normalized_k_files_from_paths, load_program, parse_file_with_cache, KCLModuleCache,
+    LoadProgramOptions, ParseSessionRef,
 };
 use kclvm_sema::{
     advanced_resolver::AdvancedResolver,
@@ -28,7 +28,10 @@ pub struct Params {
     pub gs_cache: Option<KCLGlobalStateCache>,
 }
 
-pub fn compile(
+/// Compile a KCL file and the transitive all files depends on it.
+/// files: Compiled entry files.
+/// params.file: Changed file, in the case of the LSP, the file that was just opened or changed.
+pub fn partial_compile(
     params: Params,
     files: &mut [String],
     opts: Option<LoadProgramOptions>,
@@ -36,7 +39,6 @@ pub fn compile(
     // Ignore the kcl plugin sematic check.
     let mut opts = opts.unwrap_or_default();
     opts.load_plugins = true;
-    // Get input files
     let files = match get_normalized_k_files_from_paths(files, &opts) {
         Ok(file_list) => file_list,
         Err(e) => {
@@ -61,8 +63,8 @@ pub fn compile(
         opts.k_code_list.append(&mut k_code_list);
     }
 
-    let mut diags = IndexSet::new();
-
+    let sess = ParseSessionRef::default();
+    // Update parser cache
     if let Some(module_cache) = params.module_cache.as_ref() {
         if let Some(file) = &params.file {
             let code = if let Some(vfs) = &params.vfs {
@@ -73,28 +75,40 @@ pub fn compile(
             } else {
                 None
             };
-            let mut module_cache_ref = module_cache.write().unwrap();
-            module_cache_ref
-                .invalidate_module
-                .insert(file.clone(), code);
+
+            if let Err(e) = parse_file_with_cache(file, code, sess.clone(), module_cache.clone()) {
+                return (
+                    IndexSet::new(),
+                    Err(anyhow::anyhow!("Compile failed: {:?}", e)),
+                );
+            }
         }
     }
 
+    let mut diags = IndexSet::new();
+
     // Parser
-    let sess = ParseSessionRef::default();
     let mut program = match load_program(sess.clone(), &files, Some(opts), params.module_cache) {
         Ok(r) => r.program,
         Err(e) => return (diags, Err(anyhow::anyhow!("Parse failed: {:?}", e))),
     };
     diags.extend(sess.1.read().diagnostics.clone());
 
-    // Resolver
+    // Update Resolver cache
+    let mut new_or_invalidate_pkgs = HashSet::new();
+
     if let Some(cached_scope) = params.scope_cache.as_ref() {
         if let Some(file) = &params.file {
             if let Some(mut cached_scope) = cached_scope.try_write() {
                 let mut invalidate_pkg_modules = HashSet::new();
                 invalidate_pkg_modules.insert(file.clone());
-                cached_scope.invalidate_pkg_modules = Some(invalidate_pkg_modules);
+                let mut invalidate_pkgs =
+                    cached_scope.update(&program, &Some(invalidate_pkg_modules));
+                invalidate_pkgs.insert(kclvm_ast::MAIN_PKG.to_string());
+                for pkg in &invalidate_pkgs {
+                    cached_scope.scope_map.remove(pkg);
+                }
+                new_or_invalidate_pkgs = invalidate_pkgs;
             }
         }
     }
@@ -110,6 +124,7 @@ pub fn compile(
     );
     diags.extend(prog_scope.handler.diagnostics);
 
+    // Update Namer AdvancedResolver cache
     let mut default = GlobalState::default();
     let mut gs_ref;
 
@@ -124,18 +139,19 @@ pub fn compile(
         None => &mut default,
     };
 
-    gs.new_or_invalidate_pkgs = match &params.scope_cache {
-        Some(cache) => match cache.try_write() {
-            Some(scope) => scope.invalidate_pkgs.clone(),
-            None => HashSet::new(),
-        },
-        None => HashSet::new(),
-    };
+    gs.new_or_invalidate_pkgs = new_or_invalidate_pkgs;
+
     gs.clear_cache();
 
+    // Namer
     Namer::find_symbols(&program, gs);
 
-    match AdvancedResolver::resolve_program(&program, gs, prog_scope.node_ty_map) {
+    // AdvancedResolver
+    let res = AdvancedResolver::resolve_program(&program, gs, prog_scope.node_ty_map);
+
+    gs.new_or_invalidate_pkgs.clear();
+
+    match res {
         Ok(_) => (diags, Ok((program, gs.clone()))),
         Err(e) => (diags, Err(anyhow::anyhow!("Resolve failed: {:?}", e))),
     }
@@ -154,5 +170,5 @@ pub fn compile_with_params(
     if !files.contains(&file) {
         files.push(file);
     }
-    compile(params, &mut files, opts)
+    partial_compile(params, &mut files, opts)
 }

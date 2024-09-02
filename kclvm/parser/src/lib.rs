@@ -151,6 +151,24 @@ pub fn parse_file_force_errors(filename: &str, code: Option<String>) -> Result<a
     }
 }
 
+/// Parses a file and update cache
+pub fn parse_file_with_cache(
+    file: &str,
+    code: Option<String>,
+    sess: ParseSessionRef,
+    cache: KCLModuleCache,
+) -> Result<()> {
+    let mut m = parse_file_with_global_session(sess, file, code)?;
+    let mut module_cache_ref = cache.write().unwrap();
+    if let Some(m_cache) = module_cache_ref.ast_cache.get(&file.to_string()) {
+        m.pkg = m_cache.pkg.clone();
+        m.name = m_cache.name.clone();
+    }
+    module_cache_ref.ast_cache.insert(file.to_string(), m);
+    drop(module_cache_ref);
+    Ok(())
+}
+
 /// Parse a KCL file to the AST module with the parse session .
 pub fn parse_file_with_session(
     sess: ParseSessionRef,
@@ -310,8 +328,6 @@ pub type KCLModuleCache = Arc<RwLock<ModuleCache>>;
 #[derive(Default, Debug)]
 pub struct ModuleCache {
     pub ast_cache: IndexMap<String, ast::Module>,
-    /// Invalid modules and new code, equivalent to paths and k_code_list. The difference is that paths is in the main package.
-    pub invalidate_module: HashMap<String, Option<String>>,
 }
 struct Loader {
     sess: ParseSessionRef,
@@ -352,38 +368,6 @@ impl Loader {
         let workdir = compile_entries.get_root_path().to_string();
         let mut pkgs = HashMap::new();
         let mut pkg_files = Vec::new();
-        // update cache
-        if let Some(module_cache) = self.module_cache.as_ref() {
-            for entry in compile_entries.iter() {
-                let k_files = entry.get_k_files();
-                let maybe_k_codes = entry.get_k_codes();
-                // update main pkg ast cache
-                for (i, filename) in k_files.iter().enumerate() {
-                    let m = parse_file_with_session(
-                        self.sess.clone(),
-                        filename,
-                        maybe_k_codes[i].clone(),
-                    )?;
-                    let mut module_cache_ref = module_cache.write().unwrap();
-                    module_cache_ref
-                        .ast_cache
-                        .insert(filename.clone(), m.clone());
-                }
-                // update invalidate module ast cache
-                let mut module_cache_ref = module_cache.write().unwrap();
-                let invalidate_module = module_cache_ref.invalidate_module.clone();
-                module_cache_ref.invalidate_module.clear();
-                drop(module_cache_ref);
-
-                for (filename, code) in invalidate_module.iter() {
-                    let m = parse_file_with_session(self.sess.clone(), filename, code.clone())?;
-                    let mut module_cache_ref = module_cache.write().unwrap();
-                    module_cache_ref
-                        .ast_cache
-                        .insert(filename.clone(), m.clone());
-                }
-            }
-        }
 
         for entry in compile_entries.iter() {
             let k_files = entry.get_k_files();
@@ -391,8 +375,15 @@ impl Loader {
             // Load main package.
             for (i, filename) in k_files.iter().enumerate() {
                 let mut m = if let Some(module_cache) = self.module_cache.as_ref() {
-                    let module_cache_ref = module_cache.read().unwrap();
-                    module_cache_ref.ast_cache.get(filename).unwrap().clone()
+                    let module_cache_ref = module_cache.write().unwrap();
+                    match module_cache_ref.ast_cache.get(filename) {
+                        Some(m) => m.clone(),
+                        None => parse_file_with_session(
+                            self.sess.clone(),
+                            filename,
+                            maybe_k_codes[i].clone(),
+                        )?,
+                    }
                 } else {
                     parse_file_with_session(self.sess.clone(), filename, maybe_k_codes[i].clone())?
                 };

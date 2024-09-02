@@ -120,9 +120,6 @@ impl<'ctx> Namer<'ctx> {
                 continue;
             }
 
-            // add new pkgs to invalidate pkgs
-            namer.gs.new_or_invalidate_pkgs.insert(name.clone());
-
             {
                 if modules.is_empty() {
                     continue;

@@ -955,25 +955,11 @@ fn test_clear_cache_by_module() {
     if let Some(mut cached_scope) = cached_scope.try_write() {
         let mut invalidate_pkg_modules = HashSet::new();
         invalidate_pkg_modules.insert(invalidate_module);
-        cached_scope.invalidate_pkg_modules = Some(invalidate_pkg_modules);
-    };
-
-    let _ = resolve_program_with_opts(
-        &mut program,
-        Options {
-            merge_program: false,
-            type_erasure: false,
-            ..Default::default()
-        },
-        Some(cached_scope.clone()),
-    );
-    if let Some(cached_scope) = cached_scope.try_write() {
-        // main - a
-        //      - b - c
-        // invalidate main, invalidate_pkgs main
+        let invalidate_pkgs = cached_scope.update(&program, &Some(invalidate_pkg_modules));
         let mut expect = HashSet::new();
         expect.insert(MAIN_PKG.to_string());
-        assert_eq!(cached_scope.invalidate_pkgs, expect);
+
+        assert_eq!(invalidate_pkgs, expect);
     };
 
     // recompile and clear cache
@@ -989,27 +975,15 @@ fn test_clear_cache_by_module() {
     if let Some(mut cached_scope) = cached_scope.try_write() {
         let mut invalidate_pkg_modules = HashSet::new();
         invalidate_pkg_modules.insert(invalidate_module);
-        cached_scope.invalidate_pkg_modules = Some(invalidate_pkg_modules);
-    };
 
-    let _ = resolve_program_with_opts(
-        &mut program,
-        Options {
-            merge_program: false,
-            type_erasure: false,
-            ..Default::default()
-        },
-        Some(cached_scope.clone()),
-    );
-
-    if let Some(cached_scope) = cached_scope.try_write() {
+        let invalidate_pkgs = cached_scope.update(&program, &Some(invalidate_pkg_modules));
         // main - a
         //      - b - c
         // invalidate a, invalidate_pkgs a, main
         let mut expect = HashSet::new();
         expect.insert(MAIN_PKG.to_string());
         expect.insert("cache.a".to_string());
-        assert_eq!(cached_scope.invalidate_pkgs, expect);
+        assert_eq!(invalidate_pkgs, expect);
     };
 
     // recompile and clear cache
@@ -1025,9 +999,15 @@ fn test_clear_cache_by_module() {
     if let Some(mut cached_scope) = cached_scope.try_write() {
         let mut invalidate_pkg_modules = HashSet::new();
         invalidate_pkg_modules.insert(invalidate_module);
-        cached_scope.invalidate_pkg_modules = Some(invalidate_pkg_modules);
-    };
-
+        let invalidate_pkgs = cached_scope.update(&program, &Some(invalidate_pkg_modules));
+        // main - a
+        //      - b - c
+        // invalidate b, invalidate_pkgs b, main
+        let mut expect = HashSet::new();
+        expect.insert(MAIN_PKG.to_string());
+        expect.insert("cache.b".to_string());
+        assert_eq!(invalidate_pkgs, expect);
+    }
     let _ = resolve_program_with_opts(
         &mut program,
         Options {
@@ -1037,17 +1017,6 @@ fn test_clear_cache_by_module() {
         },
         Some(cached_scope.clone()),
     );
-
-    if let Some(cached_scope) = cached_scope.try_write() {
-        // main - a
-        //      - b - c
-        // invalidate b, invalidate_pkgs b, main
-        let mut expect = HashSet::new();
-        expect.insert(MAIN_PKG.to_string());
-        expect.insert("cache.b".to_string());
-        assert_eq!(cached_scope.invalidate_pkgs, expect);
-    };
-
     // recompile and clear cache
     let invalidate_module = std::fs::canonicalize(std::path::PathBuf::from(
         "./src/resolver/test_data/cache/c/c.k",
@@ -1061,20 +1030,7 @@ fn test_clear_cache_by_module() {
     if let Some(mut cached_scope) = cached_scope.try_write() {
         let mut invalidate_pkg_modules = HashSet::new();
         invalidate_pkg_modules.insert(invalidate_module);
-        cached_scope.invalidate_pkg_modules = Some(invalidate_pkg_modules);
-    };
-
-    let _ = resolve_program_with_opts(
-        &mut program,
-        Options {
-            merge_program: false,
-            type_erasure: false,
-            ..Default::default()
-        },
-        Some(cached_scope.clone()),
-    );
-
-    if let Some(cached_scope) = cached_scope.try_write() {
+        let invalidate_pkgs = cached_scope.update(&program, &Some(invalidate_pkg_modules));
         // main - a
         //      - b - c
         // invalidate c, invalidate_pkgs c, b, main
@@ -1082,6 +1038,6 @@ fn test_clear_cache_by_module() {
         expect.insert(MAIN_PKG.to_string());
         expect.insert("cache.b".to_string());
         expect.insert("cache.c".to_string());
-        assert_eq!(cached_scope.invalidate_pkgs, expect);
+        assert_eq!(invalidate_pkgs, expect);
     };
 }
